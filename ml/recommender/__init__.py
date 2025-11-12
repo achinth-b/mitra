@@ -1,0 +1,2 @@
+"""Market recommendation components."""
+
