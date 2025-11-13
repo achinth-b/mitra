@@ -1,2 +1,0 @@
-"""Social graph analysis components."""
-

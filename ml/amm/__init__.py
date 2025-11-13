@@ -1,2 +1,0 @@
-"""Automated Market Maker components."""
-

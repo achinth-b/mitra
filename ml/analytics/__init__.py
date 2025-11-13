@@ -1,2 +1,0 @@
-"""Analytics and insights components."""
-
