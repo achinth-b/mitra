@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Token, TokenAccount};
+use anchor_spl::token::{Token, TokenAccount};
 use crate::state::*;
 use crate::errors::*;
 
@@ -16,7 +16,7 @@ pub struct CreateGroup<'info> {
     pub friend_group: Account<'info, FriendGroup>,
     
     /// CHECK: PDA for SOL treasury, validated by seeds
-    /// SystemAccount with init requires space (8 bytes for discriminator + 0 for data)
+    /// Using UncheckedAccount since we're creating a new system account
     #[account(
         init,
         payer = admin,
@@ -24,7 +24,7 @@ pub struct CreateGroup<'info> {
         seeds = [b"treasury_sol", friend_group.key().as_ref()],
         bump
     )]
-    pub treasury_sol: SystemAccount<'info>,
+    pub treasury_sol: UncheckedAccount<'info>,
     
     /// USDC treasury token account - must be created as ATA for friend_group PDA before this instruction
     /// The owner will be validated in the handler after friend_group PDA is derived

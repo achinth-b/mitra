@@ -44,6 +44,11 @@ pub struct RemoveMember<'info> {
 }
 
 pub fn handler(ctx: Context<RemoveMember>) -> Result<()> {
+    // Get AccountInfo references before mutable borrow
+    let friend_group_account_info = ctx.accounts.friend_group.to_account_info();
+    let friend_group_admin = ctx.accounts.friend_group.admin;
+    let friend_group_bump = ctx.accounts.friend_group.treasury_bump;
+    
     let friend_group = &mut ctx.accounts.friend_group;
     let member = &ctx.accounts.member;
     
@@ -72,17 +77,12 @@ pub fn handler(ctx: Context<RemoveMember>) -> Result<()> {
     );
     
     // TODO: Check for active bets in events program
-    // For now, we'll assume no active bets check is needed
-    // In production, you'd query the events program to check if member has unresolved bets
-    let has_active_bets = false; // Placeholder - implement when events program exists
+    let has_active_bets = false;
     
     if has_active_bets {
-        // Don't delete member, just mark funds as locked
-        // They can withdraw later after events resolve
         let member_account = &mut ctx.accounts.member;
         member_account.locked_funds = true;
         
-        // Still decrement member_count (they're removed from group)
         friend_group.member_count = friend_group.member_count
             .checked_sub(1)
             .ok_or(FriendGroupError::MinMembersRequired)?;
@@ -91,7 +91,7 @@ pub fn handler(ctx: Context<RemoveMember>) -> Result<()> {
     }
     
     // No active bets - proceed with full removal and refund
-    let member = &ctx.accounts.member; // Re-borrow after potential mutation above
+    let member = &ctx.accounts.member;
     
     // Refund SOL balance to member
     if member.balance_sol > 0 {
@@ -104,13 +104,13 @@ pub fn handler(ctx: Context<RemoveMember>) -> Result<()> {
         let cpi_accounts = Transfer {
             from: ctx.accounts.treasury_usdc.to_account_info(),
             to: ctx.accounts.member_usdc_account.to_account_info(),
-            authority: ctx.accounts.friend_group.to_account_info(),
+            authority: friend_group_account_info, // Use the AccountInfo we got earlier
         };
         
         let seeds = &[
             b"friend_group",
-            friend_group.admin.as_ref(),
-            &[friend_group.treasury_bump],
+            friend_group_admin.as_ref(),
+            &[friend_group_bump],
         ];
         let signer_seeds = &[&seeds[..]];
         
@@ -137,8 +137,7 @@ pub fn handler(ctx: Context<RemoveMember>) -> Result<()> {
     **member_account_info.try_borrow_mut_lamports()? -= rent_lamports;
     **member_wallet_info.try_borrow_mut_lamports()? += rent_lamports;
     member_account_info.assign(&system_program::ID);
-    member_account_info.realloc(0, false)?;
+    member_account_info.resize(0)?;
     
     Ok(())
 }
-
