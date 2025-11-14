@@ -5,6 +5,7 @@
     "scripts": {
         "test": "anchor test",
         "test:local": "anchor test --skip-local-validator",
+        "test:ts": "mocha -r ts-node/register -t 1000000 tests/**/*.ts",
         "lint": "eslint . --ext .ts",
         "build": "anchor build"
     },
