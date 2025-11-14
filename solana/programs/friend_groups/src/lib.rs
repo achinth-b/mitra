@@ -8,7 +8,7 @@ pub mod errors;
 use state::*;
 use errors::*;
 
-declare_id!("Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS");
+declare_id!("A4hEysUGCcMWtuiWMCUZr8nw6mL8WDkTsKXjifTttCQJ");
 
 #[program]
 pub mod friend_groups {

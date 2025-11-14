@@ -357,133 +357,26 @@ describe("Friend Groups", () => {
   });
 
   describe("remove_member", () => {
-    before(async () => {
-      // Ensure we have at least 4 members (admin + member1 + member2 + member3)
-      // This is needed because we can't remove a member if it would bring us below 3
-      
-      // Add member2
-      const [member2Pda] = helpers.deriveMemberPda(friendGroupPda, member2.publicKey, program.programId);
-      try {
-        await program.account.groupMember.fetch(member2Pda);
-      } catch {
-        const [invitePda] = helpers.deriveInvitePda(friendGroupPda, member2.publicKey, program.programId);
-        try {
-          await program.account.invite.fetch(invitePda);
-        } catch {
-          await program.methods
-            .inviteMember()
-            .accounts({
-              friendGroup: friendGroupPda,
-              invitedUser: member2.publicKey,
-              inviter: admin.publicKey,
-            })
-            .signers([admin])
-            .rpc();
-        }
-        await program.methods
-          .acceptInvite()
-          .accounts({
-            friendGroup: friendGroupPda,
-            invitedUser: member2.publicKey,
-          })
-          .signers([member2])
-          .rpc();
-      }
-
-      // Add member3 to ensure we have at least 4 members
-      const [member3Pda] = helpers.deriveMemberPda(friendGroupPda, member3.publicKey, program.programId);
-      try {
-        await program.account.groupMember.fetch(member3Pda);
-      } catch {
-        const [invitePda] = helpers.deriveInvitePda(friendGroupPda, member3.publicKey, program.programId);
-        try {
-          await program.account.invite.fetch(invitePda);
-        } catch {
-          await program.methods
-            .inviteMember()
-            .accounts({
-              friendGroup: friendGroupPda,
-              invitedUser: member3.publicKey,
-              inviter: admin.publicKey,
-            })
-            .signers([admin])
-            .rpc();
-        }
-        await program.methods
-          .acceptInvite()
-          .accounts({
-            friendGroup: friendGroupPda,
-            invitedUser: member3.publicKey,
-          })
-          .signers([member3])
-          .rpc();
-      }
-    });
-
     it("Successfully removes a member and refunds balances", async () => {
-      const [memberPda] = helpers.deriveMemberPda(friendGroupPda, member2.publicKey, program.programId);
-      const memberUsdcAccount = await Token.getAssociatedTokenAddress(
-        ASSOCIATED_TOKEN_PROGRAM_ID,
-        TOKEN_PROGRAM_ID,
-        usdcMint,
-        member2.publicKey
-      );
-
-      // Ensure member2 has some balance and USDC account exists
-      const memberAccountBefore = await program.account.groupMember.fetch(memberPda);
+      const harness = new FriendGroupTestHarness(program, provider);
+      await harness.init();
       
-      // Ensure member_usdc_account exists - create it using instruction if needed
-      try {
-        await usdcToken.getAccountInfo(memberUsdcAccount);
-      } catch {
-        // Account doesn't exist, create it using instruction
-        const createAtaIx = Token.createAssociatedTokenAccountInstruction(
-          ASSOCIATED_TOKEN_PROGRAM_ID,
-          TOKEN_PROGRAM_ID,
-          usdcMint,
-          memberUsdcAccount,
-          member2.publicKey,
-          member2.publicKey
-        );
-        const tx = new Transaction().add(createAtaIx);
-        const txSig = await provider.connection.sendTransaction(tx, [member2]);
-        await provider.connection.confirmTransaction(txSig);
-        // Wait for account to be initialized
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        // Verify it was created
-        await usdcToken.getAccountInfo(memberUsdcAccount);
-      }
-      
-      if (memberAccountBefore.balanceSol.toNumber() === 0) {
-        // Deposit some SOL first
-        await program.methods
-          .depositFunds(new anchor.BN(LAMPORTS_PER_SOL), new anchor.BN(0))
-          .accounts({
-            friendGroup: friendGroupPda,
-            memberWallet: member2.publicKey,
-            treasuryUsdc: treasuryUsdcPda,
-            memberUsdcAccount: memberUsdcAccount,
-          })
-          .signers([member2])
-          .rpc();
-      }
+      // Add 4 members to ensure we can remove one
+      await harness.addMember();
+      const member2 = await harness.addMember();
+      await harness.addMember();
+      await harness.addMember();
 
-      const groupAccountBefore = await program.account.friendGroup.fetch(friendGroupPda);
+      // Deposit some balance for member2
+      await harness.depositFor(member2, LAMPORTS_PER_SOL, 0);
 
-      await program.methods
-        .removeMember()
-        .accounts({
-          friendGroup: friendGroupPda,
-          memberWallet: member2.publicKey,
-          treasuryUsdc: treasuryUsdcPda,
-          memberUsdcAccount: memberUsdcAccount,
-          admin: admin.publicKey,
-        })
-        .signers([admin])
-        .rpc();
+      const groupAccountBefore = await harness.getGroup();
+      const memberPda = harness.getMemberPda(member2);
+
+      await harness.removeMember(member2);
 
       // Verify member count decreased
-      const groupAccount = await program.account.friendGroup.fetch(friendGroupPda);
+      const groupAccount = await harness.getGroup();
       expect(groupAccount.memberCount).to.equal(groupAccountBefore.memberCount - 1);
 
       // Verify member account was closed
@@ -497,123 +390,54 @@ describe("Friend Groups", () => {
     });
 
     it("Fails when non-admin tries to remove member", async () => {
-      // Re-add member2 first
-      const [memberPda] = helpers.deriveMemberPda(friendGroupPda, member2.publicKey, program.programId);
+      const harness = new FriendGroupTestHarness(program, provider);
+      await harness.init();
+      const member1 = await harness.addMember();
+      const member2 = await harness.addMember();
 
-      try {
-        await program.account.groupMember.fetch(memberPda);
-      } catch {
-        const [invitePda] = helpers.deriveInvitePda(friendGroupPda, member2.publicKey, program.programId);
-        
-        try {
-          await program.account.invite.fetch(invitePda);
-        } catch {
-          await program.methods
-            .inviteMember()
-            .accounts({
-              friendGroup: friendGroupPda,
-              invitedUser: member2.publicKey,
-              inviter: admin.publicKey,
-            })
-            .signers([admin])
-            .rpc();
-        }
+      const memberUsdcAccount = await harness.ensureTokenAccount(member2);
 
-        await program.methods
-          .acceptInvite()
-          .accounts({
-            friendGroup: friendGroupPda,
-            invitedUser: member2.publicKey,
-          })
-          .signers([member2])
-          .rpc();
-      }
-
-      const memberUsdcAccount = await Token.getAssociatedTokenAddress(
-        ASSOCIATED_TOKEN_PROGRAM_ID,
-        TOKEN_PROGRAM_ID,
-        usdcMint,
-        member2.publicKey
-      );
-      const member2Token = new Token(provider.connection, usdcMint, TOKEN_PROGRAM_ID, member2);
-      try {
-        await usdcToken.getAccountInfo(memberUsdcAccount);
-      } catch {
-        await member2Token.createAccount(member2.publicKey);
-      }
-
-      try {
+      await harness.expectUnauthorizedError(async () => {
         await program.methods
           .removeMember()
           .accounts({
-            friendGroup: friendGroupPda,
+            friendGroup: harness.friendGroupPda,
             memberWallet: member2.publicKey,
-            treasuryUsdc: treasuryUsdcPda,
+            treasuryUsdc: harness.treasuryUsdcPda,
             memberUsdcAccount: memberUsdcAccount,
             admin: member1.publicKey, // Not admin
           })
           .signers([member1])
           .rpc();
-        
-        expect.fail("Should have thrown an error");
-      } catch (err: any) {
-        // Any error is acceptable - we just want to ensure it fails
-        expect(err).to.exist;
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        // Check if it's an Anchor error or contains authorization-related error
-        const isAuthError = errorMsg.includes("Unauthorized") || 
-                           errorMsg.includes("Only admin") ||
-                           (err instanceof AnchorError && err.error?.errorCode?.code === "Unauthorized");
-        expect(isAuthError || err instanceof AnchorError).to.be.true;
-      }
+      });
     });
 
     it("Fails when removing would violate minimum member requirement", async () => {
-      // Ensure we have exactly 3 members
-      const groupAccount = await program.account.friendGroup.fetch(friendGroupPda);
+      const harness = new FriendGroupTestHarness(program, provider);
+      await harness.init();
       
-      if (groupAccount.memberCount === 3) {
-        const memberUsdcAccount = await Token.getAssociatedTokenAddress(
-          ASSOCIATED_TOKEN_PROGRAM_ID,
-          TOKEN_PROGRAM_ID,
-          usdcMint,
-          member1.publicKey
-        );
-        try {
-          await usdcToken.getAccountInfo(memberUsdcAccount);
-        } catch {
-          // Account doesn't exist, create it
-          const member1Token = new Token(provider.connection, usdcMint, TOKEN_PROGRAM_ID, member1);
-          await member1Token.createAccount(member1.publicKey);
-          // Wait a bit for account to be initialized
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
+      // Add exactly 2 more members (total 3 including admin)
+      const member1 = await harness.addMember();
+      await harness.addMember();
 
-        try {
-          await program.methods
-            .removeMember()
-            .accounts({
-              friendGroup: friendGroupPda,
-              memberWallet: member1.publicKey,
-              treasuryUsdc: treasuryUsdcPda,
-              memberUsdcAccount: memberUsdcAccount,
-              admin: admin.publicKey,
-            })
-            .signers([admin])
-            .rpc();
-          
-          expect.fail("Should have thrown an error");
-        } catch (err: any) {
-          // Any error is acceptable - we just want to ensure it fails
-          expect(err).to.exist;
-          const errorMsg = err instanceof Error ? err.message : String(err);
-          // Check if it's an Anchor error or contains member requirement error
-          const isMemberError = errorMsg.includes("at least 3 members") || 
-                               errorMsg.includes("MinMembersRequired") ||
-                               (err instanceof AnchorError && err.error?.errorCode?.code === "MinMembersRequired");
-          expect(isMemberError || err instanceof AnchorError).to.be.true;
-        }
-      }
+      const groupAccount = await harness.getGroup();
+      expect(groupAccount.memberCount).to.equal(3);
+
+      const memberUsdcAccount = await harness.ensureTokenAccount(member1);
+
+      await harness.expectMinMembersError(async () => {
+        await program.methods
+          .removeMember()
+          .accounts({
+            friendGroup: harness.friendGroupPda,
+            memberWallet: member1.publicKey,
+            treasuryUsdc: harness.treasuryUsdcPda,
+            memberUsdcAccount: memberUsdcAccount,
+            admin: harness.admin.publicKey,
+          })
+          .signers([harness.admin])
+          .rpc();
+      });
     });
   });
 });
