@@ -17,6 +17,13 @@ poetry.lock
 package-lock.json
 node_modules/
 
+# Rust/Solana
+Cargo.lock
+target/
+**/target/
+.anchor/
+**/.anchor/
+
 # Environment
 .env
 *.env
