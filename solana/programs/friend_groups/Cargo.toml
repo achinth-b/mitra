@@ -1,0 +1,20 @@
+[package]
+name = "friend_groups"
+version = "0.1.0"
+description = "Friend Groups program for Mitra prediction market"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "friend_groups"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+
+[dependencies]
+anchor-lang = "0.30.0"
+anchor-spl = "0.30.0"
