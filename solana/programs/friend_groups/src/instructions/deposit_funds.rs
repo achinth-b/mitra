@@ -1,44 +1,8 @@
 use anchor_lang::prelude::*;
-use anchor_spl::token::{self, Token, TokenAccount, Transfer};
-use crate::state::*;
+use anchor_spl::token::{self, Transfer};
 use crate::errors::*;
 
-#[derive(Accounts)]
-pub struct DepositFunds<'info> {
-    #[account(mut)]
-    pub friend_group: Account<'info, FriendGroup>,
-    
-    #[account(
-        mut,
-        seeds = [b"member", friend_group.key().as_ref(), member.user.key().as_ref()],
-        bump
-    )]
-    pub member: Account<'info, GroupMember>,
-    
-    /// CHECK: SOL treasury PDA
-    #[account(
-        mut,
-        seeds = [b"treasury_sol", friend_group.key().as_ref()],
-        bump = friend_group.treasury_bump
-    )]
-    pub treasury_sol: SystemAccount<'info>,
-    
-    /// CHECK: USDC treasury token account
-    #[account(mut)]
-    pub treasury_usdc: Account<'info, TokenAccount>,
-    
-    /// CHECK: Member's USDC token account (source)
-    #[account(mut)]
-    pub member_usdc_account: Account<'info, TokenAccount>,
-    
-    #[account(mut)]
-    pub member_wallet: Signer<'info>,
-    
-    pub token_program: Program<'info, Token>,
-    pub system_program: Program<'info, System>,
-}
-
-pub fn handler(ctx: Context<DepositFunds>, amount_sol: u64, amount_usdc: u64) -> Result<()> {
+pub fn handler(ctx: Context<crate::friend_groups::DepositFunds>, amount_sol: u64, amount_usdc: u64) -> Result<()> {
     // Validate at least one amount > 0 (fail fast)
     require!(
         amount_sol > 0 || amount_usdc > 0,

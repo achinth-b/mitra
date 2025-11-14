@@ -1,36 +1,8 @@
 use anchor_lang::prelude::*;
-use crate::state::*;
 use crate::errors::*;
+use crate::state::{FriendGroup, GroupMember, MemberRole};
 
-#[derive(Accounts)]
-pub struct AcceptInvite<'info> {
-    #[account(mut)]
-    pub friend_group: Account<'info, FriendGroup>,
-    
-    #[account(
-        mut,
-        close = invited_user, // Close invite account and refund rent to user
-        seeds = [b"invite", friend_group.key().as_ref(), invited_user.key().as_ref()],
-        bump
-    )]
-    pub invite: Account<'info, Invite>,
-    
-    #[account(
-        init,
-        payer = invited_user,
-        space = GroupMember::MAX_SIZE,
-        seeds = [b"member", friend_group.key().as_ref(), invited_user.key().as_ref()],
-        bump
-    )]
-    pub group_member: Account<'info, GroupMember>,
-    
-    #[account(mut)]
-    pub invited_user: Signer<'info>,
-    
-    pub system_program: Program<'info, System>,
-}
-
-pub fn handler(ctx: Context<AcceptInvite>) -> Result<()> {
+pub fn handler(ctx: Context<crate::friend_groups::AcceptInvite>) -> Result<()> {
     let invite = &ctx.accounts.invite;
     let clock = Clock::get()?;
     

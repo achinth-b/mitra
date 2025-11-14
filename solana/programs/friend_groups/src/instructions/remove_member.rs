@@ -1,53 +1,14 @@
 use anchor_lang::prelude::*;
 use anchor_lang::system_program;
-use anchor_spl::token::{self, Token, TokenAccount, Transfer};
-use crate::state::*;
+use anchor_spl::token::{self, Transfer};
 use crate::errors::*;
+use crate::state::{FriendGroup, MemberRole};
 
-#[derive(Accounts)]
-pub struct RemoveMember<'info> {
-    #[account(mut)]
-    pub friend_group: Account<'info, FriendGroup>,
-    
-    #[account(
-        mut,
-        seeds = [b"member", friend_group.key().as_ref(), member.user.key().as_ref()],
-        bump
-    )]
-    pub member: Account<'info, GroupMember>,
-    
-    /// CHECK: SOL treasury PDA
-    #[account(
-        mut,
-        seeds = [b"treasury_sol", friend_group.key().as_ref()],
-        bump = friend_group.treasury_bump
-    )]
-    pub treasury_sol: SystemAccount<'info>,
-    
-    /// CHECK: USDC treasury token account
-    #[account(mut)]
-    pub treasury_usdc: Account<'info, TokenAccount>,
-    
-    /// CHECK: Member's wallet (for SOL refund)
-    #[account(mut)]
-    pub member_wallet: AccountInfo<'info>,
-    
-    /// CHECK: Member's USDC token account (for refund)
-    #[account(mut)]
-    pub member_usdc_account: Account<'info, TokenAccount>,
-    
-    #[account(mut)]
-    pub admin: Signer<'info>,
-    
-    pub token_program: Program<'info, Token>,
-    pub system_program: Program<'info, System>,
-}
-
-pub fn handler(ctx: Context<RemoveMember>) -> Result<()> {
+pub fn handler(ctx: Context<crate::friend_groups::RemoveMember>) -> Result<()> {
     // Get AccountInfo references before mutable borrow
     let friend_group_account_info = ctx.accounts.friend_group.to_account_info();
     let friend_group_admin = ctx.accounts.friend_group.admin;
-    let friend_group_bump = ctx.accounts.friend_group.treasury_bump;
+    let friend_group_bump = ctx.accounts.friend_group.friend_group_bump;
     
     let friend_group = &mut ctx.accounts.friend_group;
     let member = &ctx.accounts.member;

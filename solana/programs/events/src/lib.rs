@@ -72,7 +72,7 @@ pub mod events {
         require!(group.admin == ctx.accounts.admin.key(), EventError::Unauthorized);
         
         let event_contract = &mut ctx.accounts.event_contract;
-        event_contract.event_id = ctx.accounts.event_contract.key();
+        event_contract.event_id = event_contract.key();
         event_contract.group = ctx.accounts.group.key();
         event_contract.title = title;
         event_contract.description = description;

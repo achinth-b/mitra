@@ -58,7 +58,7 @@ describe("Events", () => {
     usdcMint = usdcToken.publicKey;
 
     [friendGroupPda] = helpers.deriveFriendGroupPda(admin.publicKey, friendGroupsProgram.programId);
-    [treasuryUsdcPda] = await Token.getAssociatedTokenAddress(
+    treasuryUsdcPda = await Token.getAssociatedTokenAddress(
       ASSOCIATED_TOKEN_PROGRAM_ID,
       TOKEN_PROGRAM_ID,
       usdcMint,
@@ -79,7 +79,7 @@ describe("Events", () => {
     const tx = new Transaction().add(createAtaIx);
     await provider.connection.sendTransaction(tx, [admin]);
 
-    await friendGroupsProgram.methods
+    await (friendGroupsProgram.methods as any)
       .createGroup("Test Group")
       .accounts({
         admin: admin.publicKey,
@@ -104,6 +104,11 @@ describe("Events", () => {
         eventsProgram.programId
       );
 
+      const [eventStatePda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("event_state"), eventPda.toBuffer()],
+        eventsProgram.programId
+      );
+
       await eventsProgram.methods
         .createEvent(
           EVENT_TITLE,
@@ -114,10 +119,10 @@ describe("Events", () => {
         )
         .accounts({
           eventContract: eventPda,
+          eventState: eventStatePda,
           group: friendGroupPda,
           admin: admin.publicKey,
-          friendGroupsProgram: friendGroupsProgram.programId,
-        })
+        } as any)
         .signers([admin])
         .rpc();
 
@@ -153,10 +158,13 @@ describe("Events", () => {
           )
           .accounts({
             eventContract: eventPda,
+            eventState: PublicKey.findProgramAddressSync(
+              [Buffer.from("event_state"), eventPda.toBuffer()],
+              eventsProgram.programId
+            )[0],
             group: friendGroupPda,
             admin: nonMember.publicKey,
-            friendGroupsProgram: friendGroupsProgram.programId,
-          })
+          } as any)
           .signers([nonMember])
           .rpc();
 
@@ -192,10 +200,13 @@ describe("Events", () => {
           )
           .accounts({
             eventContract: eventPda,
+            eventState: PublicKey.findProgramAddressSync(
+              [Buffer.from("event_state"), eventPda.toBuffer()],
+              eventsProgram.programId
+            )[0],
             group: friendGroupPda,
             admin: admin.publicKey,
-            friendGroupsProgram: friendGroupsProgram.programId,
-          })
+          } as any)
           .signers([admin])
           .rpc();
 
@@ -239,10 +250,13 @@ describe("Events", () => {
         )
         .accounts({
           eventContract: eventPda,
+          eventState: PublicKey.findProgramAddressSync(
+            [Buffer.from("event_state"), eventPda.toBuffer()],
+            eventsProgram.programId
+          )[0],
           group: friendGroupPda,
           admin: admin.publicKey,
-          friendGroupsProgram: friendGroupsProgram.programId,
-        })
+        } as any)
         .signers([admin])
         .rpc();
     });
@@ -256,7 +270,7 @@ describe("Events", () => {
           eventContract: eventPda,
           eventState: eventStatePda,
           backendAuthority: backendAuthority.publicKey,
-        })
+        } as any)
         .signers([backendAuthority])
         .rpc();
 
@@ -292,10 +306,13 @@ describe("Events", () => {
         )
         .accounts({
           eventContract: eventPda,
+          eventState: PublicKey.findProgramAddressSync(
+            [Buffer.from("event_state"), eventPda.toBuffer()],
+            eventsProgram.programId
+          )[0],
           group: friendGroupPda,
           admin: admin.publicKey,
-          friendGroupsProgram: friendGroupsProgram.programId,
-        })
+        } as any)
         .signers([admin])
         .rpc();
     });
@@ -307,7 +324,7 @@ describe("Events", () => {
           eventContract: eventPda,
           group: friendGroupPda,
           admin: admin.publicKey,
-        })
+        } as any)
         .signers([admin])
         .rpc();
 
@@ -341,10 +358,13 @@ describe("Events", () => {
         )
         .accounts({
           eventContract: newEventPda,
+          eventState: PublicKey.findProgramAddressSync(
+            [Buffer.from("event_state"), newEventPda.toBuffer()],
+            eventsProgram.programId
+          )[0],
           group: friendGroupPda,
           admin: admin.publicKey,
-          friendGroupsProgram: friendGroupsProgram.programId,
-        })
+        } as any)
         .signers([admin])
         .rpc();
 
@@ -355,7 +375,7 @@ describe("Events", () => {
             eventContract: newEventPda,
             group: friendGroupPda,
             admin: nonMember.publicKey,
-          })
+          } as any)
           .signers([nonMember])
           .rpc();
 

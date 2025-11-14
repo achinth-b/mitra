@@ -4,6 +4,9 @@ version = "0.1.0"
 description = "Friend Groups program for Mitra prediction market"
 edition = "2021"
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("custom-heap", "custom-panic", "anchor-debug"))'] }
+
 [lib]
 crate-type = ["cdylib", "lib"]
 name = "friend_groups"
@@ -22,3 +25,6 @@ idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 [dependencies]
 anchor-lang = "0.32.1"
 anchor-spl = "0.32.1"
+
+[dev-dependencies]
+anchor-client = "0.32.1"

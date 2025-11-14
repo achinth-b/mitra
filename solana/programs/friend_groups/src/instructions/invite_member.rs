@@ -1,31 +1,8 @@
 use anchor_lang::prelude::*;
-use crate::state::*;
 use crate::errors::*;
+use crate::state::{FriendGroup, Invite};
 
-#[derive(Accounts)]
-pub struct InviteMember<'info> {
-    #[account(mut)]
-    pub friend_group: Account<'info, FriendGroup>,
-    
-    #[account(
-        init,
-        payer = inviter,
-        space = Invite::MAX_SIZE,
-        seeds = [b"invite", friend_group.key().as_ref(), invited_user.key().as_ref()],
-        bump
-    )]
-    pub invite: Account<'info, Invite>,
-    
-    /// CHECK: User being invited
-    pub invited_user: AccountInfo<'info>,
-    
-    #[account(mut)]
-    pub inviter: Signer<'info>,
-    
-    pub system_program: Program<'info, System>,
-}
-
-pub fn handler(ctx: Context<InviteMember>) -> Result<()> {
+pub fn handler(ctx: Context<crate::friend_groups::InviteMember>) -> Result<()> {
     let friend_group = &ctx.accounts.friend_group;
     let clock = Clock::get()?;
     
