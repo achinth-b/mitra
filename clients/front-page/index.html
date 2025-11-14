@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mitra Markets</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            height: 100%;
+            width: 100%;
+        }
+
+        body {
+            background-color: #000000;
+            color: #ffffff;
+            font-family: 'Garamond', 'Times New Roman', serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            min-height: 100dvh; /* Dynamic viewport height for mobile */
+            width: 100vw;
+            text-align: center;
+            padding: 5vw;
+            overflow-x: hidden;
+        }
+
+        .content {
+            max-width: 90vw;
+            width: 100%;
+        }
+
+        h1 {
+            font-size: clamp(2rem, 8vw, 4rem);
+            font-weight: normal;
+            margin-bottom: clamp(1.5rem, 5vw, 3rem);
+            line-height: 1.2;
+        }
+
+        .coming-soon {
+            font-size: clamp(1rem, 4vw, 2rem);
+            font-style: italic;
+            margin-top: clamp(2rem, 6vw, 4rem);
+            opacity: 0.9;
+        }
+
+        /* Tablet specific adjustments */
+        @media (min-width: 768px) and (max-width: 1024px) {
+            h1 {
+                font-size: clamp(2.5rem, 6vw, 3.5rem);
+            }
+
+            .coming-soon {
+                font-size: clamp(1.3rem, 3vw, 1.8rem);
+            }
+        }
+
+        /* Mobile specific adjustments */
+        @media (max-width: 767px) {
+            body {
+                padding: 4vw;
+            }
+
+            h1 {
+                font-size: clamp(1.8rem, 10vw, 2.5rem);
+            }
+
+            .coming-soon {
+                font-size: clamp(1rem, 5vw, 1.5rem);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="content">
+        <h1>bet on (or against) your friends.</h1>
+        <p class="coming-soon">coming soon...</p>
+    </div>
+</body>
+</html>
+

@@ -13,6 +13,10 @@ ENV/
 poetry.lock
 .venv/
 
+# Node
+package-lock.json
+node_modules/
+
 # Environment
 .env
 *.env
