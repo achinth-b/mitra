@@ -71,7 +71,8 @@ pub mod friend_groups {
         friend_group.member_count = 1;
         friend_group.treasury_sol = ctx.accounts.treasury_sol.key();
         friend_group.treasury_usdc = ctx.accounts.treasury_usdc.key();
-        friend_group.treasury_bump = ctx.bumps.friend_group;
+        friend_group.treasury_bump = ctx.bumps.treasury_sol;
+        friend_group.friend_group_bump = ctx.bumps.friend_group;
         friend_group.created_at = clock.unix_timestamp;
         
         Ok(())
@@ -211,20 +212,13 @@ pub mod friend_groups {
         #[account(mut)]
         pub friend_group: Account<'info, FriendGroup>,
         
-        #[account(
-            mut,
-            seeds = [b"member", friend_group.key().as_ref(), member.user.key().as_ref()],
-            bump
-        )]
-        pub member: Account<'info, GroupMember>,
-        
         /// CHECK: SOL treasury PDA
         #[account(
             mut,
             seeds = [b"treasury_sol", friend_group.key().as_ref()],
             bump = friend_group.treasury_bump
         )]
-        pub treasury_sol: SystemAccount<'info>,
+        pub treasury_sol: UncheckedAccount<'info>,
         
         /// CHECK: USDC treasury token account
         #[account(mut)]
@@ -233,6 +227,13 @@ pub mod friend_groups {
         /// CHECK: Member's wallet (for SOL refund)
         #[account(mut)]
         pub member_wallet: AccountInfo<'info>,
+        
+        #[account(
+            mut,
+            seeds = [b"member", friend_group.key().as_ref(), member_wallet.key().as_ref()],
+            bump
+        )]
+        pub member: Account<'info, GroupMember>,
         
         /// CHECK: Member's USDC token account (for refund)
         #[account(mut)]
@@ -248,7 +249,7 @@ pub mod friend_groups {
     pub fn remove_member(ctx: Context<RemoveMember>) -> Result<()> {
         let friend_group_account_info = ctx.accounts.friend_group.to_account_info();
         let friend_group_admin = ctx.accounts.friend_group.admin;
-        let friend_group_bump = ctx.accounts.friend_group.treasury_bump;
+        let friend_group_bump = ctx.accounts.friend_group.friend_group_bump;
         
         let friend_group = &mut ctx.accounts.friend_group;
         let member = &ctx.accounts.member;
@@ -289,6 +290,8 @@ pub mod friend_groups {
         let member = &ctx.accounts.member;
         
         if member.balance_sol > 0 {
+            // Transfer SOL from treasury PDA to member wallet
+            // Use direct lamport manipulation since treasury_sol is a PDA-owned account
             **ctx.accounts.treasury_sol.to_account_info().try_borrow_mut_lamports()? -= member.balance_sol;
             **ctx.accounts.member_wallet.to_account_info().try_borrow_mut_lamports()? += member.balance_sol;
         }
@@ -300,6 +303,7 @@ pub mod friend_groups {
                 authority: friend_group_account_info,
             };
             
+            // Use friend_group PDA seeds for signing
             let seeds = &[
                 b"friend_group",
                 friend_group_admin.as_ref(),
@@ -342,20 +346,13 @@ pub mod friend_groups {
         #[account(mut)]
         pub friend_group: Account<'info, FriendGroup>,
         
-        #[account(
-            mut,
-            seeds = [b"member", friend_group.key().as_ref(), member.user.key().as_ref()],
-            bump
-        )]
-        pub member: Account<'info, GroupMember>,
-        
         /// CHECK: SOL treasury PDA
         #[account(
             mut,
             seeds = [b"treasury_sol", friend_group.key().as_ref()],
             bump = friend_group.treasury_bump
         )]
-        pub treasury_sol: SystemAccount<'info>,
+        pub treasury_sol: UncheckedAccount<'info>,
         
         /// CHECK: USDC treasury token account
         #[account(mut)]
@@ -367,6 +364,13 @@ pub mod friend_groups {
         
         #[account(mut)]
         pub member_wallet: Signer<'info>,
+        
+        #[account(
+            mut,
+            seeds = [b"member", friend_group.key().as_ref(), member_wallet.key().as_ref()],
+            bump
+        )]
+        pub member: Account<'info, GroupMember>,
         
         pub token_program: Program<'info, Token>,
         pub system_program: Program<'info, System>,
@@ -396,8 +400,20 @@ pub mod friend_groups {
         );
         
         if amount_sol > 0 {
-            **ctx.accounts.member_wallet.to_account_info().try_borrow_mut_lamports()? -= amount_sol;
-            **ctx.accounts.treasury_sol.to_account_info().try_borrow_mut_lamports()? += amount_sol;
+            // Transfer SOL from member wallet to treasury PDA using system program
+            // No signing needed - member_wallet is the signer
+            anchor_lang::solana_program::program::invoke(
+                &anchor_lang::solana_program::system_instruction::transfer(
+                    ctx.accounts.member_wallet.key,
+                    ctx.accounts.treasury_sol.key,
+                    amount_sol,
+                ),
+                &[
+                    ctx.accounts.member_wallet.to_account_info(),
+                    ctx.accounts.treasury_sol.to_account_info(),
+                    ctx.accounts.system_program.to_account_info(),
+                ],
+            )?;
             
             member.balance_sol = member.balance_sol
                 .checked_add(amount_sol)
@@ -435,20 +451,13 @@ pub mod friend_groups {
         #[account(mut)]
         pub friend_group: Account<'info, FriendGroup>,
         
-        #[account(
-            mut,
-            seeds = [b"member", friend_group.key().as_ref(), member.user.key().as_ref()],
-            bump
-        )]
-        pub member: Account<'info, GroupMember>,
-        
         /// CHECK: SOL treasury PDA
         #[account(
             mut,
             seeds = [b"treasury_sol", friend_group.key().as_ref()],
             bump = friend_group.treasury_bump
         )]
-        pub treasury_sol: SystemAccount<'info>,
+        pub treasury_sol: UncheckedAccount<'info>,
         
         /// CHECK: USDC treasury token account
         #[account(mut)]
@@ -460,6 +469,13 @@ pub mod friend_groups {
         
         #[account(mut)]
         pub member_wallet: Signer<'info>,
+        
+        #[account(
+            mut,
+            seeds = [b"member", friend_group.key().as_ref(), member_wallet.key().as_ref()],
+            bump
+        )]
+        pub member: Account<'info, GroupMember>,
         
         pub token_program: Program<'info, Token>,
         pub system_program: Program<'info, System>,
@@ -494,6 +510,8 @@ pub mod friend_groups {
                 FriendGroupError::InsufficientBalance
             );
             
+            // Transfer SOL from treasury PDA to member wallet
+            // Use direct lamport manipulation since treasury_sol is a PDA-owned account
             **ctx.accounts.treasury_sol.to_account_info().try_borrow_mut_lamports()? -= amount_sol;
             **ctx.accounts.member_wallet.to_account_info().try_borrow_mut_lamports()? += amount_sol;
             
@@ -514,10 +532,14 @@ pub mod friend_groups {
                 authority: ctx.accounts.friend_group.to_account_info(),
             };
             
+            // Extract bump before mutable borrow
+            let friend_group_admin = ctx.accounts.friend_group.admin;
+            let friend_group_bump = ctx.accounts.friend_group.friend_group_bump;
+            
             let seeds = &[
                 b"friend_group",
-                ctx.accounts.friend_group.admin.as_ref(),
-                &[ctx.accounts.friend_group.treasury_bump],
+                friend_group_admin.as_ref(),
+                &[friend_group_bump],
             ];
             let signer_seeds = &[&seeds[..]];
             

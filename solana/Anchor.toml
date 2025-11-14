@@ -10,12 +10,15 @@ default = []
 
 [programs.localnet]
 friend_groups = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
+# events = "<YOUR_EVENTS_PROGRAM_ID>"
 
 [programs.devnet]
 friend_groups = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
+# events = "<YOUR_EVENTS_PROGRAM_ID>"
 
 [programs.mainnet]
 friend_groups = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
+# events = "<YOUR_EVENTS_PROGRAM_ID>"
 
 [registry]
 url = "https://api.apr.dev"
@@ -25,7 +28,7 @@ cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [test]
-startup_wait = 10000
+startup_wait = 20000
 
 [scripts]
 test = "npm run test:ts"

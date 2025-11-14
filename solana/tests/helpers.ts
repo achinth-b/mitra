@@ -51,3 +51,24 @@ export function deriveInvitePda(
     programId
   );
 }
+
+export function deriveEventPda(
+    group: PublicKey,
+    title: string,
+    programId: PublicKey
+  ): [PublicKey, number] {
+    return PublicKey.findProgramAddressSync(
+      [Buffer.from("event"), group.toBuffer(), Buffer.from(title)],
+      programId
+    );
+  }
+  
+  export function deriveEventStatePda(
+    event: PublicKey,
+    programId: PublicKey
+  ): [PublicKey, number] {
+    return PublicKey.findProgramAddressSync(
+      [Buffer.from("event_state"), event.toBuffer()],
+      programId
+    );
+  }

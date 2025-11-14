@@ -23,6 +23,7 @@ target/
 **/target/
 .anchor/
 **/.anchor/
+solana/test-ledger/
 
 # Environment
 .env

@@ -7,14 +7,15 @@ pub struct FriendGroup {
     pub member_count: u32,          // 4 bytes
     pub treasury_sol: Pubkey,       // 32 bytes (PDA for SOL)
     pub treasury_usdc: Pubkey,     // 32 bytes (Associated Token Account for USDC)
-    pub treasury_bump: u8,          // 1 byte (for PDA derivation)
+    pub treasury_bump: u8,          // 1 byte (for treasury_sol PDA derivation)
+    pub friend_group_bump: u8,       // 1 byte (for friend_group PDA derivation)
     pub created_at: i64,            // 8 bytes
 }
 
 impl FriendGroup {
     // Calculate space needed for account
     // 8 (discriminator) + sizes above
-    pub const MAX_SIZE: usize = 8 + 32 + (4 + 50) + 4 + 32 + 32 + 1 + 8;
+    pub const MAX_SIZE: usize = 8 + 32 + (4 + 50) + 4 + 32 + 32 + 1 + 1 + 8;
     
     pub const MIN_MEMBERS: u32 = 3;
     pub const MAX_MEMBERS: u32 = 30;
