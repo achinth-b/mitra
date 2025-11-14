@@ -17,4 +17,4 @@ default = []
 [dependencies]
 anchor-lang = "0.30.0"
 anchor-spl = "0.30.0"
-friend-groups = { path = "../friend_groups", features = ["cpi"] }
+friend_groups = { path = "../friend_groups", features = ["cpi"] }

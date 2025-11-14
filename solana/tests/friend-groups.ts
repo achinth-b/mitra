@@ -1,19 +1,13 @@
 import * as anchor from "@coral-xyz/anchor";
-import { Program, AnchorError } from "@coral-xyz/anchor";
+import { Program } from "@coral-xyz/anchor";
 import { FriendGroups } from "../target/types/friend_groups";
-import {
-  PublicKey,
-  Keypair,
-  LAMPORTS_PER_SOL,
-  Transaction,
-} from "@solana/web3.js";
+import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import {
   TOKEN_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
   Token,
 } from "@solana/spl-token";
 import { expect } from "chai";
-import * as helpers from "./helpers";
 import { FriendGroupTestHarness } from "./harness";
 
 describe("Friend Groups", () => {
@@ -21,7 +15,7 @@ describe("Friend Groups", () => {
   anchor.setProvider(anchor.AnchorProvider.env());
 
   const program = anchor.workspace.FriendGroups as Program<FriendGroups>;
-  const provider = anchor.getProvider();
+  const provider = anchor.getProvider() as anchor.AnchorProvider;
 
   describe("create_group", () => {
     it("Successfully creates a friend group", async () => {

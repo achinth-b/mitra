@@ -7,12 +7,15 @@ skip-lint = false
 
 [programs.devnet]
 friend_groups = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
+events = "GHzeKGDCAsPzt2BMkXrS8y8azC4jDYec2SNuwd4tmZ9F"
 
 [programs.localnet]
 friend_groups = "A4hEysUGCcMWtuiWMCUZr8nw6mL8WDkTsKXjifTttCQJ"
+events = "GHzeKGDCAsPzt2BMkXrS8y8azC4jDYec2SNuwd4tmZ9F"
 
 [programs.mainnet]
 friend_groups = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
+events = "GHzeKGDCAsPzt2BMkXrS8y8azC4jDYec2SNuwd4tmZ9F"
 
 [registry]
 url = "https://api.apr.dev"

@@ -8,7 +8,7 @@ pub mod errors;
 use state::*;
 use errors::*;
 
-declare_id!("<YOUR_PROGRAM_ID>"); // Generate with: anchor keys list
+declare_id!("GHzeKGDCAsPzt2BMkXrS8y8azC4jDYec2SNuwd4tmZ9F"); // Generate with: anchor keys list
 
 #[program]
 pub mod events {

@@ -29,13 +29,13 @@ export class FriendGroupTestHarness {
   provider: anchor.AnchorProvider;
 
   // Group-specific state
-  admin: Keypair;
-  friendGroupPda: PublicKey;
-  treasurySolPda: PublicKey;
-  treasuryUsdcPda: PublicKey;
-  usdcMint: PublicKey;
-  usdcToken: Token;
-  groupName: string;
+  admin!: Keypair;
+  friendGroupPda!: PublicKey;
+  treasurySolPda!: PublicKey;
+  treasuryUsdcPda!: PublicKey;
+  usdcMint!: PublicKey;
+  usdcToken!: Token;
+  groupName!: string;
 
   // Members cache
   private members: Map<string, Keypair> = new Map();
