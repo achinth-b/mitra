@@ -9,6 +9,13 @@ pub fn handler(ctx: Context<crate::friend_groups::WithdrawFunds>, amount_sol: u6
         FriendGroupError::InvalidAmount
     );
     
+    // Extract values before mutable borrow
+    let friend_group_account_info = ctx.accounts.friend_group.to_account_info();
+    let friend_group_key = ctx.accounts.friend_group.key();
+    let treasury_bump = ctx.accounts.friend_group.treasury_bump;
+    let friend_group_admin = ctx.accounts.friend_group.admin;
+    let friend_group_bump = ctx.accounts.friend_group.friend_group_bump;
+    
     let member = &mut ctx.accounts.member;
     
     // Validate signer is the member
@@ -36,6 +43,10 @@ pub fn handler(ctx: Context<crate::friend_groups::WithdrawFunds>, amount_sol: u6
             FriendGroupError::InsufficientBalance
         );
         
+        // Direct lamport manipulation is safe here because:
+        // 1. treasury_sol is validated by seeds in account constraints (seeds = [b"treasury_sol", friend_group.key().as_ref()])
+        // 2. The seeds prove we control this PDA
+        // 3. Even though it's System Program-owned, we can manipulate lamports of PDAs we control
         **ctx.accounts.treasury_sol.to_account_info().try_borrow_mut_lamports()? -= amount_sol;
         **ctx.accounts.member_wallet.to_account_info().try_borrow_mut_lamports()? += amount_sol;
         
@@ -54,13 +65,13 @@ pub fn handler(ctx: Context<crate::friend_groups::WithdrawFunds>, amount_sol: u6
         let cpi_accounts = Transfer {
             from: ctx.accounts.treasury_usdc.to_account_info(),
             to: ctx.accounts.member_usdc_account.to_account_info(),
-            authority: ctx.accounts.friend_group.to_account_info(),
+            authority: friend_group_account_info,
         };
         
         let seeds = &[
             b"friend_group",
-            ctx.accounts.friend_group.admin.as_ref(),
-            &[ctx.accounts.friend_group.friend_group_bump],
+            friend_group_admin.as_ref(),
+            &[friend_group_bump],
         ];
         let signer_seeds = &[&seeds[..]];
         

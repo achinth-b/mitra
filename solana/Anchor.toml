@@ -1,5 +1,6 @@
 [toolchain]
 anchor_version = "0.32.1"
+solana_version = "2.2.1"
 
 [features]
 resolution = true
@@ -28,6 +29,6 @@ wallet = "~/.config/solana/id.json"
 test = "npm run test:ts"
 
 [test]
-startup_wait = 20000
+startup_wait = 30000
 shutdown_wait = 2000
 upgradeable = false

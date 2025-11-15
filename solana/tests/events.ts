@@ -1,5 +1,5 @@
 import * as anchor from "@coral-xyz/anchor";
-import { Program } from "@coral-xyz/anchor";
+import { Program, AnchorError } from "@coral-xyz/anchor";
 import { Events } from "../target/types/events";
 import { FriendGroups } from "../target/types/friend_groups";
 import {
@@ -77,7 +77,8 @@ describe("Events", () => {
     );
 
     const tx = new Transaction().add(createAtaIx);
-    await provider.connection.sendTransaction(tx, [admin]);
+    const txSig = await provider.connection.sendTransaction(tx, [admin]);
+    await provider.connection.confirmTransaction(txSig);
 
     await (friendGroupsProgram.methods as any)
       .createGroup("Test Group")
@@ -95,17 +96,14 @@ describe("Events", () => {
       const resolveBy = new Date();
       resolveBy.setDate(resolveBy.getDate() + 7); // 7 days from now
 
-      const [eventPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("event"),
-          friendGroupPda.toBuffer(),
-          Buffer.from(EVENT_TITLE),
-        ],
+      const [eventPda] = helpers.deriveEventPda(
+        friendGroupPda,
+        EVENT_TITLE,
         eventsProgram.programId
       );
 
-      const [eventStatePda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("event_state"), eventPda.toBuffer()],
+      const [eventStatePda] = helpers.deriveEventStatePda(
+        eventPda,
         eventsProgram.programId
       );
 
@@ -138,12 +136,9 @@ describe("Events", () => {
       const resolveBy = new Date();
       resolveBy.setDate(resolveBy.getDate() + 7);
 
-      const [eventPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("event"),
-          friendGroupPda.toBuffer(),
-          Buffer.from("Unauthorized Event"),
-        ],
+      const [eventPda] = helpers.deriveEventPda(
+        friendGroupPda,
+        "Unauthorized Event",
         eventsProgram.programId
       );
 
@@ -158,8 +153,8 @@ describe("Events", () => {
           )
           .accounts({
             eventContract: eventPda,
-            eventState: PublicKey.findProgramAddressSync(
-              [Buffer.from("event_state"), eventPda.toBuffer()],
+            eventState: helpers.deriveEventStatePda(
+              eventPda,
               eventsProgram.programId
             )[0],
             group: friendGroupPda,
@@ -169,9 +164,14 @@ describe("Events", () => {
           .rpc();
 
         expect.fail("Should have thrown an error");
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        expect(errorMsg).to.include("Unauthorized");
+      } catch (err: any) {
+        if (err instanceof AnchorError) {
+          expect(err.error.errorCode.code).to.equal("Unauthorized");
+        } else {
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          const errorCode = err.error?.errorCode?.code || err.errorCode?.code;
+          expect(errorCode === "Unauthorized" || errorMsg.includes("Unauthorized")).to.be.true;
+        }
       }
     });
 
@@ -180,12 +180,9 @@ describe("Events", () => {
       const resolveBy = new Date();
       resolveBy.setDate(resolveBy.getDate() + 7);
 
-      const [eventPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("event"),
-          friendGroupPda.toBuffer(),
-          Buffer.from(longTitle),
-        ],
+      const [eventPda] = helpers.deriveEventPda(
+        friendGroupPda,
+        longTitle,
         eventsProgram.programId
       );
 
@@ -200,8 +197,8 @@ describe("Events", () => {
           )
           .accounts({
             eventContract: eventPda,
-            eventState: PublicKey.findProgramAddressSync(
-              [Buffer.from("event_state"), eventPda.toBuffer()],
+            eventState: helpers.deriveEventStatePda(
+              eventPda,
               eventsProgram.programId
             )[0],
             group: friendGroupPda,
@@ -211,9 +208,22 @@ describe("Events", () => {
           .rpc();
 
         expect.fail("Should have thrown an error");
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        expect(errorMsg).to.include("Title too long");
+      } catch (err: any) {
+        // Check if it's an AnchorError
+        let errorCode: string;
+        let errorNumber: number;
+        
+        if (err instanceof AnchorError) {
+          errorCode = err.error.errorCode.code;
+          errorNumber = err.error.errorCode.number;
+        } else {
+          // Fallback: check error structure directly
+          errorCode = err.error?.errorCode?.code || err.errorCode?.code;
+          errorNumber = err.error?.errorCode?.number || err.errorCode?.number;
+        }
+        
+        expect(errorCode).to.equal("TitleTooLong");
+        expect(errorNumber).to.equal(6006);
       }
     });
   });
@@ -226,17 +236,14 @@ describe("Events", () => {
       const resolveBy = new Date();
       resolveBy.setDate(resolveBy.getDate() + 7);
 
-      [eventPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("event"),
-          friendGroupPda.toBuffer(),
-          Buffer.from("Commit Test Event"),
-        ],
+      [eventPda] = helpers.deriveEventPda(
+        friendGroupPda,
+        "Commit Test Event",
         eventsProgram.programId
       );
 
-      [eventStatePda] = PublicKey.findProgramAddressSync(
-        [Buffer.from("event_state"), eventPda.toBuffer()],
+      [eventStatePda] = helpers.deriveEventStatePda(
+        eventPda,
         eventsProgram.programId
       );
 
@@ -287,12 +294,9 @@ describe("Events", () => {
       const resolveBy = new Date();
       resolveBy.setDate(resolveBy.getDate() + 7);
 
-      [eventPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("event"),
-          friendGroupPda.toBuffer(),
-          Buffer.from("Settle Test Event"),
-        ],
+      [eventPda] = helpers.deriveEventPda(
+        friendGroupPda,
+        "Settle Test Event",
         eventsProgram.programId
       );
 
@@ -339,12 +343,9 @@ describe("Events", () => {
       const resolveBy = new Date();
       resolveBy.setDate(resolveBy.getDate() + 7);
 
-      const [newEventPda] = PublicKey.findProgramAddressSync(
-        [
-          Buffer.from("event"),
-          friendGroupPda.toBuffer(),
-          Buffer.from("Unauthorized Settle"),
-        ],
+      const [newEventPda] = helpers.deriveEventPda(
+        friendGroupPda,
+        "Unauthorized Settle",
         eventsProgram.programId
       );
 
@@ -380,9 +381,14 @@ describe("Events", () => {
           .rpc();
 
         expect.fail("Should have thrown an error");
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        expect(errorMsg).to.include("Unauthorized");
+      } catch (err: any) {
+        if (err instanceof AnchorError) {
+          expect(err.error.errorCode.code).to.equal("Unauthorized");
+        } else {
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          const errorCode = err.error?.errorCode?.code || err.errorCode?.code;
+          expect(errorCode === "Unauthorized" || errorMsg.includes("Unauthorized")).to.be.true;
+        }
       }
     });
 
@@ -399,9 +405,18 @@ describe("Events", () => {
           .rpc();
 
         expect.fail("Should have thrown an error");
-      } catch (err) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        expect(errorMsg).to.include("already settled");
+      } catch (err: any) {
+        if (err instanceof AnchorError) {
+          expect(err.error.errorCode.code).to.equal("EventAlreadySettled");
+        } else {
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          const errorCode = err.error?.errorCode?.code || err.errorCode?.code;
+          expect(
+            errorCode === "EventAlreadySettled" || 
+            errorMsg.includes("already settled") || 
+            errorMsg.includes("EventAlreadySettled")
+          ).to.be.true;
+        }
       }
     });
   });

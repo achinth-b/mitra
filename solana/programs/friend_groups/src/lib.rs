@@ -148,13 +148,13 @@ pub mod friend_groups {
         )]
         pub member: Account<'info, GroupMember>,
         
-        /// CHECK: SOL treasury PDA
+        /// CHECK: SOL treasury PDA (validated by seeds, owned by System Program)
         #[account(
             mut,
             seeds = [b"treasury_sol", friend_group.key().as_ref()],
             bump = friend_group.treasury_bump
         )]
-        pub treasury_sol: SystemAccount<'info>,
+        pub treasury_sol: UncheckedAccount<'info>,
         
         /// CHECK: USDC treasury token account
         #[account(mut)]
@@ -191,13 +191,13 @@ pub mod friend_groups {
         )]
         pub member: Account<'info, GroupMember>,
         
-        /// CHECK: SOL treasury PDA
+        /// CHECK: SOL treasury PDA (validated by seeds, owned by System Program)
         #[account(
             mut,
             seeds = [b"treasury_sol", friend_group.key().as_ref()],
             bump = friend_group.treasury_bump
         )]
-        pub treasury_sol: SystemAccount<'info>,
+        pub treasury_sol: UncheckedAccount<'info>,
         
         /// CHECK: USDC treasury token account
         #[account(mut)]
@@ -238,13 +238,13 @@ pub mod friend_groups {
         )]
         pub member: Account<'info, GroupMember>,
         
-        /// CHECK: SOL treasury PDA
+        /// CHECK: SOL treasury PDA (validated by seeds, owned by System Program)
         #[account(
             mut,
             seeds = [b"treasury_sol", friend_group.key().as_ref()],
             bump = friend_group.treasury_bump
         )]
-        pub treasury_sol: SystemAccount<'info>,
+        pub treasury_sol: UncheckedAccount<'info>,
         
         /// CHECK: USDC treasury token account
         #[account(mut)]

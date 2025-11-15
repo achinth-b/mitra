@@ -1,5 +1,7 @@
 import * as anchor from "@coral-xyz/anchor";
 import { PublicKey } from "@solana/web3.js";
+import pkg from "js-sha3";
+const { keccak256 } = pkg;
 
 export async function airdropSol(
   connection: anchor.web3.Connection,
@@ -57,8 +59,10 @@ export function deriveEventPda(
     title: string,
     programId: PublicKey
   ): [PublicKey, number] {
+    // Hash title using keccak256 (matches Rust constraint)
+    const titleHash = Buffer.from(keccak256(title), "hex");
     return PublicKey.findProgramAddressSync(
-      [Buffer.from("event"), group.toBuffer(), Buffer.from(title)],
+      [Buffer.from("event"), group.toBuffer(), titleHash],
       programId
     );
   }

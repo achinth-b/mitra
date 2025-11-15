@@ -1,6 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Token, TokenAccount, Transfer};
 use friend_groups::state::FriendGroup;
+use sha3::{Keccak256, Digest};
 
 pub mod state;
 pub mod errors;
@@ -25,7 +26,11 @@ pub mod events {
             init,
             payer = admin,
             space = EventContract::MAX_SIZE,
-            seeds = [b"event", group.key().as_ref(), title.as_bytes()],
+            seeds = [
+                b"event",
+                group.key().as_ref(),
+                &Keccak256::digest(title.as_bytes())[..]
+            ],
             bump
         )]
         pub event_contract: Account<'info, EventContract>,

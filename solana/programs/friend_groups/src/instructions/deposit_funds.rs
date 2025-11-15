@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_lang::system_program;
 use anchor_spl::token::{self, Transfer};
 use crate::errors::*;
 
@@ -31,8 +32,17 @@ pub fn handler(ctx: Context<crate::friend_groups::DepositFunds>, amount_sol: u64
     
     // Deposit SOL
     if amount_sol > 0 {
-        **ctx.accounts.member_wallet.to_account_info().try_borrow_mut_lamports()? -= amount_sol;
-        **ctx.accounts.treasury_sol.to_account_info().try_borrow_mut_lamports()? += amount_sol;
+        // Use system program transfer (member is signer, so no PDA signing needed)
+        system_program::transfer(
+            CpiContext::new(
+                ctx.accounts.system_program.to_account_info(),
+                system_program::Transfer {
+                    from: ctx.accounts.member_wallet.to_account_info(),
+                    to: ctx.accounts.treasury_sol.to_account_info(),
+                },
+            ),
+            amount_sol,
+        )?;
         
         member.balance_sol = member.balance_sol
             .checked_add(amount_sol)

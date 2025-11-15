@@ -34,4 +34,7 @@ pub enum FriendGroupError {
     
     #[msg("Member has locked funds from active bets")]
     FundsLocked,
+    
+    #[msg("Invalid treasury account")]
+    InvalidTreasury,
 }

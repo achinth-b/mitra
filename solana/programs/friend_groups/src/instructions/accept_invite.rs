@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 use crate::errors::*;
-use crate::state::{FriendGroup, GroupMember, MemberRole};
+use crate::state::{FriendGroup, MemberRole};
 
 pub fn handler(ctx: Context<crate::friend_groups::AcceptInvite>) -> Result<()> {
     let invite = &ctx.accounts.invite;

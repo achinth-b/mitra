@@ -22,6 +22,8 @@ anchor-debug = []
 idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 
 [dependencies]
-anchor-lang = "0.32.1"
-anchor-spl = "0.32.1"
+anchor-lang = { workspace = true }
+anchor-spl = { workspace = true }
 friend_groups = { path = "../friend_groups", features = ["cpi"] }
+sha3 = "0.10"
+indexmap = { workspace = true }

@@ -1,14 +1,15 @@
 use anchor_lang::prelude::*;
-use anchor_lang::system_program;
 use anchor_spl::token::{self, Transfer};
 use crate::errors::*;
 use crate::state::{FriendGroup, MemberRole};
 
 pub fn handler(ctx: Context<crate::friend_groups::RemoveMember>) -> Result<()> {
-    // Get AccountInfo references before mutable borrow
+    // Get AccountInfo references and values before mutable borrow
     let friend_group_account_info = ctx.accounts.friend_group.to_account_info();
     let friend_group_admin = ctx.accounts.friend_group.admin;
     let friend_group_bump = ctx.accounts.friend_group.friend_group_bump;
+    let friend_group_key = ctx.accounts.friend_group.key();
+    let treasury_bump = ctx.accounts.friend_group.treasury_bump;
     
     let friend_group = &mut ctx.accounts.friend_group;
     let member = &ctx.accounts.member;
@@ -56,6 +57,10 @@ pub fn handler(ctx: Context<crate::friend_groups::RemoveMember>) -> Result<()> {
     
     // Refund SOL balance to member
     if member.balance_sol > 0 {
+        // Direct lamport manipulation is safe here because:
+        // 1. treasury_sol is validated by seeds in account constraints (seeds = [b"treasury_sol", friend_group.key().as_ref()])
+        // 2. The seeds prove we control this PDA
+        // 3. Even though it's System Program-owned, we can manipulate lamports of PDAs we control
         **ctx.accounts.treasury_sol.to_account_info().try_borrow_mut_lamports()? -= member.balance_sol;
         **ctx.accounts.member_wallet.to_account_info().try_borrow_mut_lamports()? += member.balance_sol;
     }

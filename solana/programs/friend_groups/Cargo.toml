@@ -23,8 +23,9 @@ anchor-debug = []
 idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
 
 [dependencies]
-anchor-lang = "0.32.1"
-anchor-spl = "0.32.1"
+anchor-lang = { workspace = true }
+anchor-spl = { workspace = true }
+indexmap = { workspace = true }
 
 [dev-dependencies]
 anchor-client = "0.32.1"
