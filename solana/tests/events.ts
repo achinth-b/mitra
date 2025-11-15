@@ -16,6 +16,18 @@ import {
 import { expect } from "chai";
 import * as helpers from "./helpers";
 
+// Test constants
+const TEST_CONSTANTS = {
+  SOL_AIRDROP_AMOUNT: 10 * LAMPORTS_PER_SOL,
+  USDC_DECIMALS: 6,
+  DEFAULT_DAYS_UNTIL_RESOLVE: 7,
+  LONG_TITLE_LENGTH: 101,
+} as const;
+
+const EVENT_TITLE = "Will it rain tomorrow?";
+const EVENT_DESCRIPTION = "Simple weather prediction";
+const EVENT_OUTCOMES = ["YES", "NO"];
+
 describe("Events", () => {
   anchor.setProvider(anchor.AnchorProvider.env());
 
@@ -32,32 +44,42 @@ describe("Events", () => {
   let treasuryUsdcPda: PublicKey;
   let backendAuthority: Keypair;
 
-  const EVENT_TITLE = "Will it rain tomorrow?";
-  const EVENT_DESCRIPTION = "Simple weather prediction";
-  const EVENT_OUTCOMES = ["YES", "NO"];
-
-  before(async () => {
+  // Setup helper functions
+  async function setupTestAccounts() {
     admin = Keypair.generate();
     member1 = Keypair.generate();
     nonMember = Keypair.generate();
     backendAuthority = Keypair.generate();
 
-    await helpers.airdropSol(provider.connection, admin.publicKey, 10 * LAMPORTS_PER_SOL);
-    await helpers.airdropSol(provider.connection, member1.publicKey, 10 * LAMPORTS_PER_SOL);
-    await helpers.airdropSol(provider.connection, nonMember.publicKey, 10 * LAMPORTS_PER_SOL);
-    await helpers.airdropSol(provider.connection, backendAuthority.publicKey, 10 * LAMPORTS_PER_SOL);
+    const accounts = [admin, member1, nonMember, backendAuthority];
+    await Promise.all(
+      accounts.map(account => 
+        helpers.airdropSol(
+          provider.connection,
+          account.publicKey,
+          TEST_CONSTANTS.SOL_AIRDROP_AMOUNT
+        )
+      )
+    );
+  }
 
+  async function setupUsdcToken() {
     usdcToken = await Token.createMint(
       provider.connection,
       admin,
       admin.publicKey,
       null,
-      6,
+      TEST_CONSTANTS.USDC_DECIMALS,
       TOKEN_PROGRAM_ID
     );
     usdcMint = usdcToken.publicKey;
+  }
 
-    [friendGroupPda] = helpers.deriveFriendGroupPda(admin.publicKey, friendGroupsProgram.programId);
+  async function setupFriendGroup() {
+    [friendGroupPda] = helpers.deriveFriendGroupPda(
+      admin.publicKey,
+      friendGroupsProgram.programId
+    );
     treasuryUsdcPda = await Token.getAssociatedTokenAddress(
       ASSOCIATED_TOKEN_PROGRAM_ID,
       TOKEN_PROGRAM_ID,
@@ -66,7 +88,6 @@ describe("Events", () => {
       true
     );
 
-    // Create friend group first
     const createAtaIx = Token.createAssociatedTokenAccountInstruction(
       ASSOCIATED_TOKEN_PROGRAM_ID,
       TOKEN_PROGRAM_ID,
@@ -89,40 +110,24 @@ describe("Events", () => {
       })
       .signers([admin])
       .rpc();
+  }
+
+  before(async () => {
+    await setupTestAccounts();
+    await setupUsdcToken();
+    await setupFriendGroup();
   });
 
   describe("create_event", () => {
     it("Successfully creates an event", async () => {
-      const resolveBy = new Date();
-      resolveBy.setDate(resolveBy.getDate() + 7); // 7 days from now
-
-      const [eventPda] = helpers.deriveEventPda(
+      const { eventPda } = await helpers.createTestEvent(
+        eventsProgram,
         friendGroupPda,
         EVENT_TITLE,
-        eventsProgram.programId
+        admin,
+        EVENT_DESCRIPTION,
+        EVENT_OUTCOMES
       );
-
-      const [eventStatePda] = helpers.deriveEventStatePda(
-        eventPda,
-        eventsProgram.programId
-      );
-
-      await eventsProgram.methods
-        .createEvent(
-          EVENT_TITLE,
-          EVENT_DESCRIPTION,
-          EVENT_OUTCOMES,
-          { manual: {} },
-          new anchor.BN(Math.floor(resolveBy.getTime() / 1000))
-        )
-        .accounts({
-          eventContract: eventPda,
-          eventState: eventStatePda,
-          group: friendGroupPda,
-          admin: admin.publicKey,
-        } as any)
-        .signers([admin])
-        .rpc();
 
       const eventAccount = await eventsProgram.account.eventContract.fetch(eventPda);
       expect(eventAccount.title).to.equal(EVENT_TITLE);
@@ -134,11 +139,15 @@ describe("Events", () => {
 
     it("Fails when non-admin tries to create event", async () => {
       const resolveBy = new Date();
-      resolveBy.setDate(resolveBy.getDate() + 7);
+      resolveBy.setDate(resolveBy.getDate() + TEST_CONSTANTS.DEFAULT_DAYS_UNTIL_RESOLVE);
 
       const [eventPda] = helpers.deriveEventPda(
         friendGroupPda,
         "Unauthorized Event",
+        eventsProgram.programId
+      );
+      const [eventStatePda] = helpers.deriveEventStatePda(
+        eventPda,
         eventsProgram.programId
       );
 
@@ -147,16 +156,13 @@ describe("Events", () => {
           .createEvent(
             "Unauthorized Event",
             "Should fail",
-            ["YES", "NO"],
+            EVENT_OUTCOMES,
             { manual: {} },
             new anchor.BN(Math.floor(resolveBy.getTime() / 1000))
           )
           .accounts({
             eventContract: eventPda,
-            eventState: helpers.deriveEventStatePda(
-              eventPda,
-              eventsProgram.programId
-            )[0],
+            eventState: eventStatePda,
             group: friendGroupPda,
             admin: nonMember.publicKey,
           } as any)
@@ -165,24 +171,22 @@ describe("Events", () => {
 
         expect.fail("Should have thrown an error");
       } catch (err: any) {
-        if (err instanceof AnchorError) {
-          expect(err.error.errorCode.code).to.equal("Unauthorized");
-        } else {
-          const errorMsg = err instanceof Error ? err.message : String(err);
-          const errorCode = err.error?.errorCode?.code || err.errorCode?.code;
-          expect(errorCode === "Unauthorized" || errorMsg.includes("Unauthorized")).to.be.true;
-        }
+        helpers.assertAnchorError(err, "Unauthorized");
       }
     });
 
     it("Fails with title too long", async () => {
-      const longTitle = "a".repeat(101);
+      const longTitle = "a".repeat(TEST_CONSTANTS.LONG_TITLE_LENGTH);
       const resolveBy = new Date();
-      resolveBy.setDate(resolveBy.getDate() + 7);
+      resolveBy.setDate(resolveBy.getDate() + TEST_CONSTANTS.DEFAULT_DAYS_UNTIL_RESOLVE);
 
       const [eventPda] = helpers.deriveEventPda(
         friendGroupPda,
         longTitle,
+        eventsProgram.programId
+      );
+      const [eventStatePda] = helpers.deriveEventStatePda(
+        eventPda,
         eventsProgram.programId
       );
 
@@ -197,10 +201,7 @@ describe("Events", () => {
           )
           .accounts({
             eventContract: eventPda,
-            eventState: helpers.deriveEventStatePda(
-              eventPda,
-              eventsProgram.programId
-            )[0],
+            eventState: eventStatePda,
             group: friendGroupPda,
             admin: admin.publicKey,
           } as any)
@@ -209,7 +210,6 @@ describe("Events", () => {
 
         expect.fail("Should have thrown an error");
       } catch (err: any) {
-        // Check if it's an AnchorError
         let errorCode: string;
         let errorNumber: number;
         
@@ -217,7 +217,6 @@ describe("Events", () => {
           errorCode = err.error.errorCode.code;
           errorNumber = err.error.errorCode.number;
         } else {
-          // Fallback: check error structure directly
           errorCode = err.error?.errorCode?.code || err.errorCode?.code;
           errorNumber = err.error?.errorCode?.number || err.errorCode?.number;
         }
@@ -233,39 +232,16 @@ describe("Events", () => {
     let eventStatePda: PublicKey;
 
     before(async () => {
-      const resolveBy = new Date();
-      resolveBy.setDate(resolveBy.getDate() + 7);
-
-      [eventPda] = helpers.deriveEventPda(
+      const result = await helpers.createTestEvent(
+        eventsProgram,
         friendGroupPda,
         "Commit Test Event",
-        eventsProgram.programId
+        admin,
+        "Testing commit state",
+        EVENT_OUTCOMES
       );
-
-      [eventStatePda] = helpers.deriveEventStatePda(
-        eventPda,
-        eventsProgram.programId
-      );
-
-      await eventsProgram.methods
-        .createEvent(
-          "Commit Test Event",
-          "Testing commit state",
-          EVENT_OUTCOMES,
-          { manual: {} },
-          new anchor.BN(Math.floor(resolveBy.getTime() / 1000))
-        )
-        .accounts({
-          eventContract: eventPda,
-          eventState: PublicKey.findProgramAddressSync(
-            [Buffer.from("event_state"), eventPda.toBuffer()],
-            eventsProgram.programId
-          )[0],
-          group: friendGroupPda,
-          admin: admin.publicKey,
-        } as any)
-        .signers([admin])
-        .rpc();
+      eventPda = result.eventPda;
+      eventStatePda = result.eventStatePda;
     });
 
     it("Successfully commits merkle root", async () => {
@@ -291,34 +267,15 @@ describe("Events", () => {
     let eventPda: PublicKey;
 
     before(async () => {
-      const resolveBy = new Date();
-      resolveBy.setDate(resolveBy.getDate() + 7);
-
-      [eventPda] = helpers.deriveEventPda(
+      const result = await helpers.createTestEvent(
+        eventsProgram,
         friendGroupPda,
         "Settle Test Event",
-        eventsProgram.programId
+        admin,
+        "Testing settle event",
+        EVENT_OUTCOMES
       );
-
-      await eventsProgram.methods
-        .createEvent(
-          "Settle Test Event",
-          "Testing settle event",
-          EVENT_OUTCOMES,
-          { manual: {} },
-          new anchor.BN(Math.floor(resolveBy.getTime() / 1000))
-        )
-        .accounts({
-          eventContract: eventPda,
-          eventState: PublicKey.findProgramAddressSync(
-            [Buffer.from("event_state"), eventPda.toBuffer()],
-            eventsProgram.programId
-          )[0],
-          group: friendGroupPda,
-          admin: admin.publicKey,
-        } as any)
-        .signers([admin])
-        .rpc();
+      eventPda = result.eventPda;
     });
 
     it("Successfully settles event", async () => {
@@ -339,35 +296,14 @@ describe("Events", () => {
     });
 
     it("Fails when non-admin tries to settle", async () => {
-      // Create new event for this test
-      const resolveBy = new Date();
-      resolveBy.setDate(resolveBy.getDate() + 7);
-
-      const [newEventPda] = helpers.deriveEventPda(
+      const { eventPda: newEventPda } = await helpers.createTestEvent(
+        eventsProgram,
         friendGroupPda,
         "Unauthorized Settle",
-        eventsProgram.programId
+        admin,
+        "Testing unauthorized settle",
+        EVENT_OUTCOMES
       );
-
-      await eventsProgram.methods
-        .createEvent(
-          "Unauthorized Settle",
-          "Testing unauthorized settle",
-          EVENT_OUTCOMES,
-          { manual: {} },
-          new anchor.BN(Math.floor(resolveBy.getTime() / 1000))
-        )
-        .accounts({
-          eventContract: newEventPda,
-          eventState: PublicKey.findProgramAddressSync(
-            [Buffer.from("event_state"), newEventPda.toBuffer()],
-            eventsProgram.programId
-          )[0],
-          group: friendGroupPda,
-          admin: admin.publicKey,
-        } as any)
-        .signers([admin])
-        .rpc();
 
       try {
         await eventsProgram.methods
@@ -382,13 +318,7 @@ describe("Events", () => {
 
         expect.fail("Should have thrown an error");
       } catch (err: any) {
-        if (err instanceof AnchorError) {
-          expect(err.error.errorCode.code).to.equal("Unauthorized");
-        } else {
-          const errorMsg = err instanceof Error ? err.message : String(err);
-          const errorCode = err.error?.errorCode?.code || err.errorCode?.code;
-          expect(errorCode === "Unauthorized" || errorMsg.includes("Unauthorized")).to.be.true;
-        }
+        helpers.assertAnchorError(err, "Unauthorized");
       }
     });
 
@@ -406,17 +336,7 @@ describe("Events", () => {
 
         expect.fail("Should have thrown an error");
       } catch (err: any) {
-        if (err instanceof AnchorError) {
-          expect(err.error.errorCode.code).to.equal("EventAlreadySettled");
-        } else {
-          const errorMsg = err instanceof Error ? err.message : String(err);
-          const errorCode = err.error?.errorCode?.code || err.errorCode?.code;
-          expect(
-            errorCode === "EventAlreadySettled" || 
-            errorMsg.includes("already settled") || 
-            errorMsg.includes("EventAlreadySettled")
-          ).to.be.true;
-        }
+        helpers.assertAnchorError(err, "EventAlreadySettled");
       }
     });
   });
