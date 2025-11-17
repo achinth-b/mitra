@@ -2,6 +2,7 @@
 members = [
     "programs/events",
     "programs/friend_groups",
+    "programs/treasury",
 ]
 resolver = "2"
 

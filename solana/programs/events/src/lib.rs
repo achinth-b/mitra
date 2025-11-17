@@ -11,6 +11,9 @@ use errors::*;
 
 declare_id!("GHzeKGDCAsPzt2BMkXrS8y8azC4jDYec2SNuwd4tmZ9F"); // Generate with: anchor keys list
 
+// Backend authority PDA seeds - backend can commit state updates
+pub const BACKEND_AUTHORITY_SEED: &[u8] = b"backend_authority";
+
 #[program]
 pub mod events {
     use super::*;
@@ -115,7 +118,11 @@ pub mod events {
         )]
         pub event_state: Account<'info, EventState>,
         
-        /// CHECK: Backend authority (should be a PDA or specific pubkey)
+        /// CHECK: Backend authority PDA (validated by seeds)
+        #[account(
+            seeds = [BACKEND_AUTHORITY_SEED],
+            bump
+        )]
         pub backend_authority: Signer<'info>,
     }
 
@@ -123,13 +130,7 @@ pub mod events {
         ctx: Context<CommitState>,
         merkle_root: [u8; 32],
     ) -> Result<()> {
-        // TODO: Add backend authority check
-        // For now, we'll add a constant backend pubkey or PDA
-        // require!(
-        //     ctx.accounts.backend_authority.key() == BACKEND_AUTHORITY,
-        //     EventError::NotBackendAuthority
-        // );
-        
+        // Backend authority is validated by PDA seeds constraint above
         require!(
             ctx.accounts.event_contract.status == EventStatus::Active,
             EventError::EventAlreadySettled
@@ -209,11 +210,18 @@ pub mod events {
         pub group: Account<'info, FriendGroup>,
         
         /// CHECK: USDC treasury token account
-        #[account(mut)]
+        #[account(
+            mut,
+            constraint = treasury_usdc.owner == group.key() @ EventError::Unauthorized
+        )]
         pub treasury_usdc: Account<'info, TokenAccount>,
         
         /// CHECK: User's USDC token account (destination)
-        #[account(mut)]
+        #[account(
+            mut,
+            constraint = user_usdc_account.owner == token_program.key() @ EventError::Unauthorized,
+            constraint = user_usdc_account.mint == treasury_usdc.mint @ EventError::Unauthorized
+        )]
         pub user_usdc_account: Account<'info, TokenAccount>,
         
         /// CHECK: Member account (we'll verify it exists)
@@ -247,12 +255,36 @@ pub mod events {
         
         require!(amount > 0, EventError::InsufficientWinnings);
         
+        // Validate user is the signer
+        require!(
+            ctx.accounts.user.key() == ctx.accounts.user_usdc_account.owner,
+            EventError::Unauthorized
+        );
+        
+        // Validate treasury USDC account belongs to friend group
+        require!(
+            ctx.accounts.treasury_usdc.owner == ctx.accounts.group.key(),
+            EventError::Unauthorized
+        );
+        
+        // Validate token account mint matches treasury mint
+        require!(
+            ctx.accounts.user_usdc_account.mint == ctx.accounts.treasury_usdc.mint,
+            EventError::Unauthorized
+        );
+        
+        // Validate treasury has sufficient balance
+        require!(
+            ctx.accounts.treasury_usdc.amount >= amount,
+            EventError::InsufficientWinnings
+        );
+        
         // Transfer USDC from treasury to user
         let group_account_info = ctx.accounts.group.to_account_info();
         let seeds = &[
             b"friend_group",
             ctx.accounts.group.admin.as_ref(),
-            &[ctx.accounts.group.treasury_bump],
+            &[ctx.accounts.group.friend_group_bump],
         ];
         let signer_seeds = &[&seeds[..]];
         

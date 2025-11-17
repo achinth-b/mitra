@@ -8,9 +8,11 @@ import {
   Transaction,
 } from "@solana/web3.js";
 import {
-  TOKEN_PROGRAM_ID,
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  Token,
+  createMint,
+  getAccount,
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
+  mintTo,
 } from "@solana/spl-token";
 import { expect } from "chai";
 import * as helpers from "./helpers";
@@ -34,7 +36,6 @@ export class FriendGroupTestHarness {
   treasurySolPda!: PublicKey;
   treasuryUsdcPda!: PublicKey;
   usdcMint!: PublicKey;
-  usdcToken!: Token;
   groupName!: string;
 
   // Members cache
@@ -61,15 +62,13 @@ export class FriendGroupTestHarness {
     );
 
     // Create USDC mint
-    this.usdcToken = await Token.createMint(
+    this.usdcMint = await createMint(
       this.provider.connection,
       this.admin,
       this.admin.publicKey,
       null,
-      USDC_DECIMALS,
-      TOKEN_PROGRAM_ID
+      USDC_DECIMALS
     );
-    this.usdcMint = this.usdcToken.publicKey;
 
     // Derive PDAs
     [this.friendGroupPda] = helpers.deriveFriendGroupPda(
@@ -80,22 +79,18 @@ export class FriendGroupTestHarness {
       this.friendGroupPda,
       this.program.programId
     );
-    this.treasuryUsdcPda = await Token.getAssociatedTokenAddress(
-      ASSOCIATED_TOKEN_PROGRAM_ID,
-      TOKEN_PROGRAM_ID,
+    this.treasuryUsdcPda = await getAssociatedTokenAddress(
       this.usdcMint,
       this.friendGroupPda,
       true
     );
 
     // Create USDC treasury ATA
-    const createAtaIx = Token.createAssociatedTokenAccountInstruction(
-      ASSOCIATED_TOKEN_PROGRAM_ID,
-      TOKEN_PROGRAM_ID,
-      this.usdcMint,
+    const createAtaIx = createAssociatedTokenAccountInstruction(
+      this.admin.publicKey,
       this.treasuryUsdcPda,
       this.friendGroupPda,
-      this.admin.publicKey
+      this.usdcMint
     );
 
     const tx = new Transaction().add(createAtaIx);
@@ -182,24 +177,20 @@ export class FriendGroupTestHarness {
    * Creates it if it doesn't exist.
    */
   async ensureTokenAccount(user: Keypair): Promise<PublicKey> {
-    const tokenAccount = await Token.getAssociatedTokenAddress(
-      ASSOCIATED_TOKEN_PROGRAM_ID,
-      TOKEN_PROGRAM_ID,
+    const tokenAccount = await getAssociatedTokenAddress(
       this.usdcMint,
       user.publicKey
     );
 
     try {
-      await this.usdcToken.getAccountInfo(tokenAccount);
+      await getAccount(this.provider.connection, tokenAccount);
     } catch {
       // Account doesn't exist, create it
-      const createAtaIx = Token.createAssociatedTokenAccountInstruction(
-        ASSOCIATED_TOKEN_PROGRAM_ID,
-        TOKEN_PROGRAM_ID,
-        this.usdcMint,
+      const createAtaIx = createAssociatedTokenAccountInstruction(
+        user.publicKey,
         tokenAccount,
         user.publicKey,
-        user.publicKey
+        this.usdcMint
       );
       const tx = new Transaction().add(createAtaIx);
       const txSig = await this.provider.connection.sendTransaction(tx, [user]);
@@ -217,7 +208,14 @@ export class FriendGroupTestHarness {
    */
   async mintUsdc(user: Keypair, amount: number): Promise<void> {
     const tokenAccount = await this.ensureTokenAccount(user);
-    await this.usdcToken.mintTo(tokenAccount, this.admin, [], amount);
+    await mintTo(
+      this.provider.connection,
+      this.admin,
+      this.usdcMint,
+      tokenAccount,
+      this.admin,
+      amount
+    );
   }
 
   /**
@@ -232,7 +230,7 @@ export class FriendGroupTestHarness {
 
     // Mint USDC if needed
     if (usdcAmount > 0) {
-      const balance = await this.usdcToken.getAccountInfo(memberUsdcAccount);
+      const balance = await getAccount(this.provider.connection, memberUsdcAccount);
       if (Number(balance.amount.toString()) < usdcAmount) {
         await this.mintUsdc(user, usdcAmount);
       }
@@ -346,7 +344,7 @@ export class FriendGroupTestHarness {
    * Get treasury USDC balance.
    */
   async getTreasuryUsdcBalance(): Promise<number> {
-    const account = await this.usdcToken.getAccountInfo(this.treasuryUsdcPda);
+    const account = await getAccount(this.provider.connection, this.treasuryUsdcPda);
     return Number(account.amount.toString());
   }
 

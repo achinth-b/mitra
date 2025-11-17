@@ -1,0 +1,110 @@
+syntax = "proto3";
+
+package mitra;
+
+service MitraService {
+  rpc CreateFriendGroup(CreateGroupRequest) returns (GroupResponse);
+  rpc InviteMember(InviteMemberRequest) returns (MemberResponse);
+  rpc CreateEvent(CreateEventRequest) returns (EventResponse);
+  rpc PlaceBet(PlaceBetRequest) returns (BetResponse);
+  rpc GetEventPrices(GetPricesRequest) returns (PricesResponse);
+  rpc SettleEvent(SettleEventRequest) returns (SettleResponse);
+}
+
+// Friend Group Messages
+message CreateGroupRequest {
+  string name = 1;
+  string admin_wallet = 2;
+  string solana_pubkey = 3;
+  string signature = 4; // Admin signature for auth
+}
+
+message GroupResponse {
+  string group_id = 1;
+  string solana_pubkey = 2;
+  string name = 3;
+  string admin_wallet = 4;
+  int64 created_at = 5;
+}
+
+message InviteMemberRequest {
+  string group_id = 1;
+  string invited_wallet = 2;
+  string inviter_wallet = 3;
+  string signature = 4; // Inviter signature
+}
+
+message MemberResponse {
+  string group_id = 1;
+  string user_id = 2;
+  string wallet_address = 3;
+  string role = 4; // "admin" or "member"
+  int64 joined_at = 5;
+}
+
+// Event Messages
+message CreateEventRequest {
+  string group_id = 1;
+  string title = 2;
+  string description = 3;
+  repeated string outcomes = 4; // ["YES", "NO"] or multiple
+  string settlement_type = 5; // "manual", "oracle", "consensus"
+  int64 resolve_by = 6; // Unix timestamp, optional
+  string creator_wallet = 7;
+  string signature = 8;
+}
+
+message EventResponse {
+  string event_id = 1;
+  string group_id = 2;
+  string solana_pubkey = 3; // May be empty until on-chain creation
+  string title = 4;
+  string description = 5;
+  repeated string outcomes = 6;
+  string settlement_type = 7;
+  string status = 8; // "active", "resolved", "cancelled"
+  int64 resolve_by = 9;
+  int64 created_at = 10;
+}
+
+// Bet Messages
+message PlaceBetRequest {
+  string event_id = 1;
+  string user_wallet = 2;
+  string outcome = 3;
+  double amount_usdc = 4;
+  string signature = 5; // User signature for auth
+}
+
+message BetResponse {
+  string bet_id = 1;
+  double shares = 2;
+  double price = 3;
+  PricesResponse updated_prices = 4;
+}
+
+message GetPricesRequest {
+  string event_id = 1;
+}
+
+message PricesResponse {
+  string event_id = 1;
+  map<string, double> prices = 2; // {"YES": 0.65, "NO": 0.35}
+  double total_volume = 3;
+  int64 timestamp = 4;
+}
+
+// Settlement Messages
+message SettleEventRequest {
+  string event_id = 1;
+  string winning_outcome = 2;
+  string settler_wallet = 3; // Admin or oracle
+  string signature = 4;
+}
+
+message SettleResponse {
+  string event_id = 1;
+  string winning_outcome = 2;
+  int64 settled_at = 3;
+  string solana_tx_signature = 4; // On-chain transaction signature
+}

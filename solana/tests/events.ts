@@ -9,9 +9,9 @@ import {
   Transaction,
 } from "@solana/web3.js";
 import {
-  TOKEN_PROGRAM_ID,
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  Token,
+  createMint,
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
 } from "@solana/spl-token";
 import { expect } from "chai";
 import * as helpers from "./helpers";
@@ -39,7 +39,6 @@ describe("Events", () => {
   let member1: Keypair;
   let nonMember: Keypair;
   let usdcMint: PublicKey;
-  let usdcToken: Token;
   let friendGroupPda: PublicKey;
   let treasuryUsdcPda: PublicKey;
   let backendAuthority: Keypair;
@@ -64,15 +63,13 @@ describe("Events", () => {
   }
 
   async function setupUsdcToken() {
-    usdcToken = await Token.createMint(
+    usdcMint = await createMint(
       provider.connection,
       admin,
       admin.publicKey,
       null,
-      TEST_CONSTANTS.USDC_DECIMALS,
-      TOKEN_PROGRAM_ID
+      TEST_CONSTANTS.USDC_DECIMALS
     );
-    usdcMint = usdcToken.publicKey;
   }
 
   async function setupFriendGroup() {
@@ -80,21 +77,17 @@ describe("Events", () => {
       admin.publicKey,
       friendGroupsProgram.programId
     );
-    treasuryUsdcPda = await Token.getAssociatedTokenAddress(
-      ASSOCIATED_TOKEN_PROGRAM_ID,
-      TOKEN_PROGRAM_ID,
+    treasuryUsdcPda = await getAssociatedTokenAddress(
       usdcMint,
       friendGroupPda,
       true
     );
 
-    const createAtaIx = Token.createAssociatedTokenAccountInstruction(
-      ASSOCIATED_TOKEN_PROGRAM_ID,
-      TOKEN_PROGRAM_ID,
-      usdcMint,
+    const createAtaIx = createAssociatedTokenAccountInstruction(
+      admin.publicKey,
       treasuryUsdcPda,
       friendGroupPda,
-      admin.publicKey
+      usdcMint
     );
 
     const tx = new Transaction().add(createAtaIx);

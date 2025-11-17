@@ -1,0 +1,34 @@
+[package]
+name = "treasury"
+version = "0.1.0"
+description = "Treasury & Settlement program for Mitra prediction market"
+edition = "2021"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(feature, values("custom-heap", "custom-panic", "anchor-debug"))'] }
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "treasury"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+custom-heap = []
+custom-panic = []
+anchor-debug = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+
+[dependencies]
+anchor-lang = { workspace = true, features = ["init-if-needed"] }
+anchor-spl = { workspace = true }
+indexmap = { workspace = true }
+friend_groups = { path = "../friend_groups", features = ["cpi"] }
+events = { path = "../events", features = ["cpi"] }
+
+[dev-dependencies]
+anchor-client = "0.32.1"
+

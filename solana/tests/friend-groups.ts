@@ -3,9 +3,7 @@ import { Program } from "@coral-xyz/anchor";
 import { FriendGroups } from "../target/types/friend_groups";
 import { LAMPORTS_PER_SOL } from "@solana/web3.js";
 import {
-  TOKEN_PROGRAM_ID,
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  Token,
+  getAssociatedTokenAddressSync,
 } from "@solana/spl-token";
 import { expect } from "chai";
 import { FriendGroupTestHarness } from "./harness";
@@ -233,9 +231,7 @@ describe("Friend Groups", () => {
       await harness.init();
       const nonMember = await harness.createMember();
 
-      const nonMemberUsdcAccount = await Token.getAssociatedTokenAddress(
-        ASSOCIATED_TOKEN_PROGRAM_ID,
-        TOKEN_PROGRAM_ID,
+      const nonMemberUsdcAccount = getAssociatedTokenAddressSync(
         harness.usdcMint,
         nonMember.publicKey
       );

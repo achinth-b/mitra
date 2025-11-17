@@ -11,8 +11,6 @@ pub fn handler(ctx: Context<crate::friend_groups::WithdrawFunds>, amount_sol: u6
     
     // Extract values before mutable borrow
     let friend_group_account_info = ctx.accounts.friend_group.to_account_info();
-    let friend_group_key = ctx.accounts.friend_group.key();
-    let treasury_bump = ctx.accounts.friend_group.treasury_bump;
     let friend_group_admin = ctx.accounts.friend_group.admin;
     let friend_group_bump = ctx.accounts.friend_group.friend_group_bump;
     
