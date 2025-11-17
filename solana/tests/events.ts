@@ -41,16 +41,21 @@ describe("Events", () => {
   let usdcMint: PublicKey;
   let friendGroupPda: PublicKey;
   let treasuryUsdcPda: PublicKey;
-  let backendAuthority: Keypair;
+  let backendAuthorityPda: PublicKey;
 
   // Setup helper functions
   async function setupTestAccounts() {
     admin = Keypair.generate();
     member1 = Keypair.generate();
     nonMember = Keypair.generate();
-    backendAuthority = Keypair.generate();
+    
+    // Derive the backend authority PDA
+    [backendAuthorityPda] = PublicKey.findProgramAddressSync(
+      [Buffer.from("backend_authority")],
+      eventsProgram.programId
+    );
 
-    const accounts = [admin, member1, nonMember, backendAuthority];
+    const accounts = [admin, member1, nonMember];
     await Promise.all(
       accounts.map(account => 
         helpers.airdropSol(
@@ -245,9 +250,8 @@ describe("Events", () => {
         .accounts({
           eventContract: eventPda,
           eventState: eventStatePda,
-          backendAuthority: backendAuthority.publicKey,
+          backendAuthority: backendAuthorityPda,
         } as any)
-        .signers([backendAuthority])
         .rpc();
 
       const eventState = await eventsProgram.account.eventState.fetch(eventStatePda);

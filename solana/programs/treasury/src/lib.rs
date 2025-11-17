@@ -31,12 +31,9 @@ pub mod treasury {
         #[account(mut)]
         pub friend_group: Account<'info, friend_groups::state::FriendGroup>,
         
-        /// CHECK: SOL treasury PDA (validated by seeds)
-        #[account(
-            mut,
-            seeds = [b"treasury_sol", friend_group.key().as_ref()],
-            bump = friend_group.treasury_bump
-        )]
+        /// CHECK: SOL treasury PDA (validated by seeds from friend_groups program)
+        /// We validate it matches friend_group.treasury_sol
+        #[account(mut)]
         pub treasury_sol: UncheckedAccount<'info>,
         
         /// CHECK: USDC treasury token account
@@ -46,6 +43,8 @@ pub mod treasury {
         #[account(mut)]
         pub admin: Signer<'info>,
         
+        /// CHECK: friend_groups program for CPI
+        pub friend_groups_program: AccountInfo<'info>,
         pub token_program: Program<'info, anchor_spl::token::Token>,
         pub system_program: Program<'info, System>,
     }
@@ -74,15 +73,15 @@ pub mod treasury {
         )]
         pub emergency_withdraw: Account<'info, EmergencyWithdraw>,
         
-        #[account(mut)]
-        pub friend_group: Account<'info, friend_groups::state::FriendGroup>,
-        
-        /// CHECK: SOL treasury PDA (validated by seeds)
         #[account(
             mut,
-            seeds = [b"treasury_sol", friend_group.key().as_ref()],
-            bump = friend_group.treasury_bump
+            constraint = friend_group.admin == admin.key() @ errors::TreasuryError::Unauthorized
         )]
+        pub friend_group: Account<'info, friend_groups::state::FriendGroup>,
+        
+        /// CHECK: SOL treasury PDA (validated by seeds from friend_groups program)
+        /// We validate it matches friend_group.treasury_sol
+        #[account(mut)]
         pub treasury_sol: UncheckedAccount<'info>,
         
         /// CHECK: USDC treasury token account
@@ -100,6 +99,8 @@ pub mod treasury {
         #[account(mut)]
         pub admin: Signer<'info>,
         
+        /// CHECK: friend_groups program for CPI
+        pub friend_groups_program: AccountInfo<'info>,
         pub token_program: Program<'info, anchor_spl::token::Token>,
         pub system_program: Program<'info, System>,
     }

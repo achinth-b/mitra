@@ -7,6 +7,7 @@ mod error;
 mod grpc_service;
 mod models;
 mod repositories;
+mod services;
 mod solana_client;
 mod state_manager;
 mod websocket;
@@ -15,6 +16,7 @@ use config::AppConfig;
 use database::{create_pool, run_migrations, Database};
 use error::{AppError, AppResult};
 use repositories::*;
+use services::{AuditTrailService, EmergencyWithdrawalService, MlPoller, SettlementService};
 use solana_client::SolanaClient;
 use state_manager::StateManager;
 use std::sync::Arc;
@@ -135,6 +137,55 @@ async fn main() -> AppResult<()> {
     });
     info!("Committer background task started");
 
+    // Initialize ML poller (queries ML service and broadcasts price updates)
+    let ml_service_url = std::env::var("ML_SERVICE_URL")
+        .unwrap_or_else(|_| "http://localhost:8000".to_string());
+    
+    let ml_poller = MlPoller::new(
+        ml_service_url,
+        app_state.event_repo.clone(),
+        app_state.bet_repo.clone(),
+        ws_server.clone(),
+    );
+    
+    // Start ML poller in background
+    let ml_poller_handle = tokio::spawn(async move {
+        ml_poller.start().await;
+    });
+    info!("ML poller background task started");
+
+    // Initialize settlement service
+    let settlement_service = Arc::new(SettlementService::new(
+        app_state.event_repo.clone(),
+        app_state.bet_repo.clone(),
+        app_state.group_member_repo.clone(),
+        solana_client.clone(),
+        ws_server.clone(),
+        pool.clone(),
+    ));
+    info!("Settlement service initialized");
+
+    // Initialize emergency withdrawal service
+    let emergency_withdrawal = Arc::new(EmergencyWithdrawalService::new(
+        app_state.bet_repo.clone(),
+        state_manager.clone(),
+        solana_client.clone(),
+    ));
+    info!("Emergency withdrawal service initialized");
+
+    // Initialize audit trail service
+    let audit_log_dir = std::path::PathBuf::from(
+        std::env::var("AUDIT_LOG_DIR").unwrap_or_else(|_| "./logs".to_string())
+    );
+    let audit_trail = Arc::new(
+        AuditTrailService::new(audit_log_dir)
+            .map_err(|e| {
+                error!("Failed to initialize audit trail: {}", e);
+                AppError::Message(format!("Audit trail initialization failed: {}", e))
+            })?
+    );
+    info!("Audit trail service initialized");
+
     // TODO: Start gRPC server
     // TODO: Start WebSocket server on HTTP port
     // For MVP, these are placeholders - full implementation requires:
@@ -154,6 +205,9 @@ async fn main() -> AppResult<()> {
         }
         _ = committer_handle => {
             error!("Committer task exited unexpectedly");
+        }
+        _ = ml_poller_handle => {
+            error!("ML poller task exited unexpectedly");
         }
     }
 

@@ -52,6 +52,8 @@ pub struct WebSocketServer {
     tx: broadcast::Sender<WsMessage>,
     /// Active subscriptions: channel -> set of client IDs
     subscriptions: Arc<RwLock<HashMap<String, Vec<Uuid>>>>,
+    /// Client subscriptions: client_id -> set of channels
+    client_channels: Arc<RwLock<HashMap<Uuid, Vec<String>>>>,
 }
 
 impl WebSocketServer {
@@ -62,6 +64,7 @@ impl WebSocketServer {
         Self {
             tx,
             subscriptions: Arc::new(RwLock::new(HashMap::new())),
+            client_channels: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -75,13 +78,59 @@ impl WebSocketServer {
         let subscriptions = self.subscriptions.read().await;
         
         if let Some(subscribers) = subscriptions.get(channel) {
-            for _client_id in subscribers {
+            let count = subscribers.len();
+            if count > 0 {
+                info!("Broadcasting to {} subscribers on channel {}", count, channel);
                 // Send to broadcast channel (all subscribers will receive)
                 if let Err(e) = self.tx.send(message.clone()) {
                     warn!("Failed to broadcast message: {}", e);
                 }
             }
         }
+    }
+
+    /// Subscribe a client to a channel
+    pub async fn subscribe(&self, client_id: Uuid, channel: String) {
+        let mut subscriptions = self.subscriptions.write().await;
+        let mut client_channels = self.client_channels.write().await;
+
+        // Add client to channel
+        subscriptions
+            .entry(channel.clone())
+            .or_insert_with(Vec::new)
+            .push(client_id);
+
+        // Track channel for client
+        client_channels
+            .entry(client_id)
+            .or_insert_with(Vec::new)
+            .push(channel);
+
+        info!("Client {} subscribed to {}", client_id, channel);
+    }
+
+    /// Unsubscribe a client from a channel
+    pub async fn unsubscribe(&self, client_id: Uuid, channel: &str) {
+        let mut subscriptions = self.subscriptions.write().await;
+        let mut client_channels = self.client_channels.write().await;
+
+        // Remove client from channel
+        if let Some(subscribers) = subscriptions.get_mut(channel) {
+            subscribers.retain(|&id| id != client_id);
+        }
+
+        // Remove channel from client's list
+        if let Some(channels) = client_channels.get_mut(&client_id) {
+            channels.retain(|c| c != channel);
+        }
+
+        info!("Client {} unsubscribed from {}", client_id, channel);
+    }
+
+    /// Get all channels a client is subscribed to
+    pub async fn get_client_channels(&self, client_id: Uuid) -> Vec<String> {
+        let client_channels = self.client_channels.read().await;
+        client_channels.get(&client_id).cloned().unwrap_or_default()
     }
 
     /// Handle a new WebSocket connection
@@ -100,8 +149,7 @@ impl WebSocketServer {
         info!("New WebSocket connection: {}", client_id);
 
         // Spawn task to handle incoming messages
-        let subscriptions = self.subscriptions.clone();
-        let tx_clone = self.tx.clone();
+        let ws_server = self.clone();
         
         tokio::spawn(async move {
             while let Some(msg) = ws_receiver.next().await {
@@ -111,21 +159,17 @@ impl WebSocketServer {
                         if let Ok(sub_msg) = serde_json::from_str::<WsMessage>(&text) {
                             match sub_msg {
                                 WsMessage::Subscribe { channel } => {
-                                    info!("Client {} subscribed to {}", client_id, channel);
-                                    let mut subs = subscriptions.write().await;
-                                    subs.entry(channel).or_insert_with(Vec::new).push(client_id);
+                                    ws_server.subscribe(client_id, channel).await;
                                 }
                                 WsMessage::Unsubscribe { channel } => {
-                                    info!("Client {} unsubscribed from {}", client_id, channel);
-                                    let mut subs = subscriptions.write().await;
-                                    if let Some(subscribers) = subs.get_mut(&channel) {
-                                        subscribers.retain(|&id| id != client_id);
-                                    }
+                                    ws_server.unsubscribe(client_id, &channel).await;
                                 }
                                 _ => {
                                     warn!("Unexpected message type from client {}", client_id);
                                 }
                             }
+                        } else {
+                            warn!("Failed to parse message from client {}: {}", client_id, text);
                         }
                     }
                     Ok(Message::Close(_)) => {
@@ -140,16 +184,39 @@ impl WebSocketServer {
                 }
             }
 
-            // Clean up subscriptions
-            let mut subs = subscriptions.write().await;
-            for subscribers in subs.values_mut() {
-                subscribers.retain(|&id| id != client_id);
+            // Clean up all subscriptions for this client
+            let channels = ws_server.get_client_channels(client_id).await;
+            for channel in channels {
+                ws_server.unsubscribe(client_id, &channel).await;
             }
         });
 
         // Spawn task to send messages to client
+        let ws_server_clone = self.clone();
         tokio::spawn(async move {
             while let Ok(msg) = rx.recv().await {
+                // Check if client is subscribed to relevant channel
+                let should_send = match &msg {
+                    WsMessage::PriceUpdate { event_id, .. } => {
+                        let channel = format!("event:{}", event_id);
+                        ws_server_clone.is_client_subscribed(client_id, &channel).await
+                    }
+                    WsMessage::BetExecuted { .. } => {
+                        // For bet_executed, we need event_id - for now send to all
+                        // TODO: Filter by event subscription
+                        true
+                    }
+                    WsMessage::EventSettled { event_id, .. } => {
+                        let channel = format!("event:{}", event_id);
+                        ws_server_clone.is_client_subscribed(client_id, &channel).await
+                    }
+                    _ => false, // Don't forward subscription/unsubscribe messages
+                };
+
+                if !should_send {
+                    continue;
+                }
+
                 let json = match serde_json::to_string(&msg) {
                     Ok(json) => json,
                     Err(e) => {
@@ -187,6 +254,7 @@ impl WebSocketServer {
     /// Broadcast bet executed
     pub async fn broadcast_bet_executed(
         &self,
+        event_id: Uuid,
         bet_id: Uuid,
         user_wallet: String,
         outcome: String,
@@ -201,11 +269,43 @@ impl WebSocketServer {
             price,
         };
 
-        // Broadcast to all event subscribers
-        // TODO: Get event_id from bet and broadcast to specific channel
-        if let Err(e) = self.tx.send(message) {
-            warn!("Failed to broadcast bet executed: {}", e);
+        // Broadcast to event subscribers and user subscribers
+        let event_channel = format!("event:{}", event_id);
+        self.broadcast_to_channel(&event_channel, message.clone()).await;
+
+        // Also broadcast to user's own channel
+        let user_channel = format!("user:{}", user_wallet);
+        self.broadcast_to_channel(&user_channel, message).await;
+    }
+
+    /// Check if client is subscribed to a channel
+    async fn is_client_subscribed(&self, client_id: Uuid, channel: &str) -> bool {
+        let subscriptions = self.subscriptions.read().await;
+        if let Some(subscribers) = subscriptions.get(channel) {
+            subscribers.contains(&client_id)
+        } else {
+            false
         }
+    }
+
+    /// Broadcast to group subscribers
+    pub async fn broadcast_to_group(
+        &self,
+        group_id: Uuid,
+        message: WsMessage,
+    ) {
+        let channel = format!("group:{}", group_id);
+        self.broadcast_to_channel(&channel, message).await;
+    }
+
+    /// Broadcast to user subscribers
+    pub async fn broadcast_to_user(
+        &self,
+        user_wallet: &str,
+        message: WsMessage,
+    ) {
+        let channel = format!("user:{}", user_wallet);
+        self.broadcast_to_channel(&channel, message).await;
     }
 
     /// Broadcast event settled
@@ -221,6 +321,16 @@ impl WebSocketServer {
 
         let channel = format!("event:{}", event_id);
         self.broadcast_to_channel(&channel, message).await;
+    }
+}
+
+impl Clone for WebSocketServer {
+    fn clone(&self) -> Self {
+        Self {
+            tx: self.tx.clone(),
+            subscriptions: Arc::clone(&self.subscriptions),
+            client_channels: Arc::clone(&self.client_channels),
+        }
     }
 }
 

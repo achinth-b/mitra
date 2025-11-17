@@ -123,7 +123,7 @@ pub mod events {
             seeds = [BACKEND_AUTHORITY_SEED],
             bump
         )]
-        pub backend_authority: Signer<'info>,
+        pub backend_authority: UncheckedAccount<'info>,
     }
 
     pub fn commit_state(

@@ -4,3 +4,4 @@ pub mod accept_invite;
 pub mod remove_member;
 pub mod deposit_funds;
 pub mod withdraw_funds;
+pub mod treasury_transfer;

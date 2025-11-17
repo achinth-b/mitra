@@ -1,0 +1,248 @@
+/**
+ * Integration tests using Anchor + Bankrun
+ * Tests full flows: create group → create event → place bets → settle
+ */
+
+import * as anchor from "@coral-xyz/anchor";
+import { Program } from "@coral-xyz/anchor";
+import { Mitra } from "../target/types/mitra";
+import { PublicKey, Keypair, SystemProgram } from "@solana/web3.js";
+import { expect } from "chai";
+import { BN } from "@coral-xyz/anchor";
+
+describe("Mitra Integration Tests", () => {
+  const provider = anchor.AnchorProvider.env();
+  anchor.setProvider(provider);
+
+  const program = anchor.workspace.Mitra as Program<Mitra>;
+  const admin = Keypair.generate();
+  const user1 = Keypair.generate();
+  const user2 = Keypair.generate();
+
+  before(async () => {
+    // Airdrop SOL to test accounts
+    await provider.connection.requestAirdrop(admin.publicKey, 2 * anchor.web3.LAMPORTS_PER_SOL);
+    await provider.connection.requestAirdrop(user1.publicKey, 2 * anchor.web3.LAMPORTS_PER_SOL);
+    await provider.connection.requestAirdrop(user2.publicKey, 2 * anchor.web3.LAMPORTS_PER_SOL);
+  });
+
+  describe("E2E Flow: Create Group → Create Event → Place Bets → Settle", () => {
+    let groupPubkey: PublicKey;
+    let eventPubkey: PublicKey;
+    let groupBump: number;
+
+    it("Step 1: Create friend group", async () => {
+      const [groupPda, bump] = PublicKey.findProgramAddressSync(
+        [Buffer.from("friend_group"), admin.publicKey.toBuffer()],
+        program.programId
+      );
+      groupPubkey = groupPda;
+      groupBump = bump;
+
+      const tx = await program.methods
+        .createFriendGroup("Test Group", new BN(groupBump))
+        .accounts({
+          group: groupPubkey,
+          admin: admin.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([admin])
+        .rpc();
+
+      const groupAccount = await program.account.friendGroup.fetch(groupPubkey);
+      expect(groupAccount.name).to.equal("Test Group");
+      expect(groupAccount.admin.toString()).to.equal(admin.publicKey.toString());
+    });
+
+    it("Step 2: Invite members", async () => {
+      // Invite user1
+      const [invite1Pda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("invite"), groupPubkey.toBuffer(), user1.publicKey.toBuffer()],
+        program.programId
+      );
+
+      await program.methods
+        .inviteMember(user1.publicKey)
+        .accounts({
+          group: groupPubkey,
+          invite: invite1Pda,
+          inviter: admin.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([admin])
+        .rpc();
+
+      // Invite user2
+      const [invite2Pda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("invite"), groupPubkey.toBuffer(), user2.publicKey.toBuffer()],
+        program.programId
+      );
+
+      await program.methods
+        .inviteMember(user2.publicKey)
+        .accounts({
+          group: groupPubkey,
+          invite: invite2Pda,
+          inviter: admin.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([admin])
+        .rpc();
+    });
+
+    it("Step 3: Accept invites", async () => {
+      const [invite1Pda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("invite"), groupPubkey.toBuffer(), user1.publicKey.toBuffer()],
+        program.programId
+      );
+
+      const [member1Pda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("member"), groupPubkey.toBuffer(), user1.publicKey.toBuffer()],
+        program.programId
+      );
+
+      await program.methods
+        .acceptInvite()
+        .accounts({
+          group: groupPubkey,
+          invite: invite1Pda,
+          member: member1Pda,
+          user: user1.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([user1])
+        .rpc();
+
+      const [invite2Pda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("invite"), groupPubkey.toBuffer(), user2.publicKey.toBuffer()],
+        program.programId
+      );
+
+      const [member2Pda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("member"), groupPubkey.toBuffer(), user2.publicKey.toBuffer()],
+        program.programId
+      );
+
+      await program.methods
+        .acceptInvite()
+        .accounts({
+          group: groupPubkey,
+          invite: invite2Pda,
+          member: member2Pda,
+          user: user2.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([user2])
+        .rpc();
+    });
+
+    it("Step 4: Create event", async () => {
+      const [eventPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("event"), groupPubkey.toBuffer(), Buffer.from("0")],
+        program.programId
+      );
+      eventPubkey = eventPda;
+
+      const outcomes = ["YES", "NO"];
+      const resolveBy = new BN(Math.floor(Date.now() / 1000) + 86400); // 24 hours from now
+
+      await program.methods
+        .createEvent(
+          "Will it rain tomorrow?",
+          "Weather prediction event",
+          outcomes,
+          { manual: {} },
+          resolveBy
+        )
+        .accounts({
+          event: eventPubkey,
+          group: groupPubkey,
+          creator: admin.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([admin])
+        .rpc();
+
+      const eventAccount = await program.account.eventContract.fetch(eventPubkey);
+      expect(eventAccount.title).to.equal("Will it rain tomorrow?");
+      expect(eventAccount.outcomes).to.deep.equal(outcomes);
+    });
+
+    it("Step 5: Place bets", async () => {
+      // User1 bets on YES
+      const betAmount1 = new BN(1000000); // 1 USDC (6 decimals)
+      const [bet1Pda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("bet"), eventPubkey.toBuffer(), user1.publicKey.toBuffer(), Buffer.from("0")],
+        program.programId
+      );
+
+      // TODO: Implement placeBet instruction
+      // This is a placeholder - actual implementation depends on your program structure
+      // await program.methods
+      //   .placeBet("YES", betAmount1)
+      //   .accounts({
+      //     event: eventPubkey,
+      //     bet: bet1Pda,
+      //     user: user1.publicKey,
+      //     // ... other accounts
+      //   })
+      //   .signers([user1])
+      //   .rpc();
+
+      // User2 bets on NO
+      const betAmount2 = new BN(2000000); // 2 USDC
+      // Similar for user2...
+    });
+
+    it("Step 6: Settle event", async () => {
+      const winningOutcome = "YES";
+
+      await program.methods
+        .settleEvent(winningOutcome)
+        .accounts({
+          event: eventPubkey,
+          group: groupPubkey,
+          settler: admin.publicKey,
+        })
+        .signers([admin])
+        .rpc();
+
+      const eventAccount = await program.account.eventContract.fetch(eventPubkey);
+      expect(eventAccount.state).to.deep.equal({ resolved: { winningOutcome } });
+    });
+
+    it("Step 7: Verify winnings distribution", async () => {
+      // TODO: Check user balances after settlement
+      // This depends on your treasury/balance implementation
+    });
+  });
+
+  describe("Error Cases", () => {
+    it("Should reject bet from non-member", async () => {
+      // Test that non-members cannot place bets
+    });
+
+    it("Should reject settlement from non-admin", async () => {
+      // Test that only admins can settle events
+    });
+
+    it("Should reject bet after event resolved", async () => {
+      // Test that bets cannot be placed after settlement
+    });
+  });
+
+  describe("Edge Cases", () => {
+    it("Should handle multiple events in same group", async () => {
+      // Test creating multiple events
+    });
+
+    it("Should handle concurrent bets", async () => {
+      // Test placing bets simultaneously
+    });
+
+    it("Should handle large bet amounts", async () => {
+      // Test with maximum bet amounts
+    });
+  });
+});
+

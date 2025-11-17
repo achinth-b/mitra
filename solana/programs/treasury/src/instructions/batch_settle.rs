@@ -1,51 +1,6 @@
 use anchor_lang::prelude::*;
-use anchor_lang::solana_program::program::invoke_signed;
-use anchor_spl::token::spl_token::instruction as token_instruction;
 use crate::errors::*;
 use crate::state::{BatchSettlement, SettlementEntry, BatchStatus, TokenType};
-use friend_groups::state::FriendGroup;
-
-
-#[derive(Accounts)]
-#[instruction(batch_id: u64, settlements: Vec<SettlementEntry>)]
-pub struct BatchSettle<'info> {
-    #[account(
-        init_if_needed,
-        payer = admin,
-        space = BatchSettlement::MAX_SIZE,
-        seeds = [b"batch_settlement", friend_group.key().as_ref(), batch_id.to_le_bytes().as_ref()],
-        bump
-    )]
-    pub batch_settlement: Account<'info, BatchSettlement>,
-    
-    #[account(
-        mut,
-        constraint = friend_group.treasury_sol == treasury_sol.key() @ TreasuryError::InvalidFriendGroup,
-        constraint = friend_group.treasury_usdc == treasury_usdc.key() @ TreasuryError::InvalidFriendGroup
-    )]
-    pub friend_group: Account<'info, FriendGroup>,
-    
-    /// CHECK: SOL treasury PDA (validated by seeds)
-    #[account(
-        mut,
-        seeds = [b"treasury_sol", friend_group.key().as_ref()],
-        bump = friend_group.treasury_bump
-    )]
-    pub treasury_sol: UncheckedAccount<'info>,
-    
-    /// CHECK: USDC treasury token account
-    #[account(
-        mut,
-        constraint = treasury_usdc.owner == friend_group.key() @ TreasuryError::InvalidTreasury
-    )]
-    pub treasury_usdc: Account<'info, anchor_spl::token::TokenAccount>,
-    
-    #[account(mut)]
-    pub admin: Signer<'info>,
-    
-    pub token_program: Program<'info, anchor_spl::token::Token>,
-    pub system_program: Program<'info, System>,
-}
 
 pub fn handler(
     ctx: Context<crate::treasury::BatchSettle>,
@@ -60,6 +15,12 @@ pub fn handler(
     let batch = &mut ctx.accounts.batch_settlement;
     let friend_group = &ctx.accounts.friend_group;
     let clock = Clock::get()?;
+    
+    // Validate treasury_sol matches friend_group
+    require!(
+        ctx.accounts.treasury_sol.key() == friend_group.treasury_sol,
+        TreasuryError::InvalidFriendGroup
+    );
     
     // Validate admin
     require!(
@@ -136,15 +97,6 @@ pub fn handler(
         TreasuryError::InvalidSettlement
     );
     
-    let friend_group_admin = friend_group.admin;
-    let friend_group_bump = ctx.accounts.friend_group.friend_group_bump;
-    let seeds = &[
-        b"friend_group",
-        friend_group_admin.as_ref(),
-        &[friend_group_bump],
-    ];
-    let signer_seeds = &[&seeds[..]];
-    
     // Process each settlement
     for (idx, entry) in settlements.iter().enumerate() {
         let wallet_idx = idx * 2;
@@ -177,50 +129,42 @@ pub fn handler(
             );
         }
         
-        // Process SOL transfer
-        if entry.token_type == TokenType::Sol && entry.amount > 0 {
-            **ctx.accounts.treasury_sol.to_account_info().try_borrow_mut_lamports()? -= entry.amount;
-            **user_wallet.try_borrow_mut_lamports()? += entry.amount;
-        }
+        // Process SOL or USDC transfer via CPI to friend_groups program
+        let transfer_sol = if entry.token_type == TokenType::Sol { entry.amount } else { 0 };
+        let transfer_usdc = if entry.token_type == TokenType::Usdc { entry.amount } else { 0 };
         
-        // Process USDC transfer  
-        if entry.token_type == TokenType::Usdc && entry.amount > 0 {
-            // Use invoke_signed with manually constructed instruction
-            let transfer_ix = token_instruction::transfer(
-                &ctx.accounts.token_program.key(),
-                &ctx.accounts.treasury_usdc.key(),
-                user_token_account.key,
-                &ctx.accounts.friend_group.key(),
-                &[],
-                entry.amount,
-            )?;
+        if transfer_sol > 0 || transfer_usdc > 0 {
+            // Clone AccountInfos from remaining_accounts and transmute to unified lifetime
+            let user_wallet_cloned = user_wallet.clone();
+            let user_token_cloned = user_token_account.clone();
             
-            // Use invoke_signed - AccountInfo is invariant over lifetime, so we need unsafe to unify
             // SAFETY: All AccountInfos come from the same Context<'info>, so lifetimes are actually the same
             // Rust's type system just can't prove it due to variance rules
-            let treasury_ai = ctx.accounts.treasury_usdc.to_account_info();
-            let user_token_cloned = user_token_account.clone();
-            let friend_group_ai = ctx.accounts.friend_group.to_account_info();
-            let token_program_ai = ctx.accounts.token_program.to_account_info();
-            
-            // Transmute the cloned AccountInfo to match the lifetime of ctx.accounts AccountInfos
-            // This is safe because all AccountInfos originate from the same Context<'info>
-            // We need to transmute through a raw pointer to change the lifetime parameter
-            let user_token_ai = unsafe {
-                // Get a raw pointer to the cloned AccountInfo
-                let ptr = &user_token_cloned as *const AccountInfo;
-                // Transmute the pointer to change the lifetime (from 'a to 'b where both are 'info)
+            let user_wallet_ai = unsafe {
+                let ptr = &user_wallet_cloned as *const AccountInfo;
                 let transmuted_ptr: *const AccountInfo = std::mem::transmute(ptr);
-                // Read the AccountInfo through the transmuted pointer
                 std::ptr::read(transmuted_ptr)
             };
             
-            // Convert ProgramError to Anchor Error
-            invoke_signed(
-                &transfer_ix,
-                &[treasury_ai, user_token_ai, friend_group_ai, token_program_ai],
-                signer_seeds,
-            ).map_err(|e| anchor_lang::error::Error::from(e))?;
+            let user_token_ai = unsafe {
+                let ptr = &user_token_cloned as *const AccountInfo;
+                let transmuted_ptr: *const AccountInfo = std::mem::transmute(ptr);
+                std::ptr::read(transmuted_ptr)
+            };
+            
+            // Call friend_groups treasury_transfer via CPI
+            let cpi_program = ctx.accounts.friend_groups_program.to_account_info();
+            let cpi_accounts = friend_groups::cpi::accounts::TreasuryTransfer {
+                friend_group: ctx.accounts.friend_group.to_account_info(),
+                treasury_sol: ctx.accounts.treasury_sol.to_account_info(),
+                treasury_usdc: ctx.accounts.treasury_usdc.to_account_info(),
+                destination_wallet: user_wallet_ai,
+                destination_token_account: user_token_ai,
+                token_program: ctx.accounts.token_program.to_account_info(),
+                system_program: ctx.accounts.system_program.to_account_info(),
+            };
+            let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+            friend_groups::cpi::treasury_transfer(cpi_ctx, transfer_sol, transfer_usdc)?;
         }
     }
     

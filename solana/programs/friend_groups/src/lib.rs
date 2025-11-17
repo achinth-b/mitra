@@ -268,4 +268,45 @@ pub mod friend_groups {
     ) -> Result<()> {
         instructions::withdraw_funds::handler(ctx, amount_sol, amount_usdc)
     }
+
+    // ============================================================================
+    // TREASURY TRANSFER (CPI only)
+    // ============================================================================
+    
+    #[derive(Accounts)]
+    pub struct TreasuryTransfer<'info> {
+        #[account(mut)]
+        pub friend_group: Account<'info, FriendGroup>,
+        
+        /// CHECK: SOL treasury PDA (validated by seeds)
+        #[account(
+            mut,
+            seeds = [b"treasury_sol", friend_group.key().as_ref()],
+            bump = friend_group.treasury_bump
+        )]
+        pub treasury_sol: UncheckedAccount<'info>,
+        
+        /// CHECK: USDC treasury token account
+        #[account(mut)]
+        pub treasury_usdc: Account<'info, TokenAccount>,
+        
+        /// CHECK: Destination wallet for SOL
+        #[account(mut)]
+        pub destination_wallet: UncheckedAccount<'info>,
+        
+        /// CHECK: Destination token account for USDC
+        #[account(mut)]
+        pub destination_token_account: Account<'info, TokenAccount>,
+        
+        pub token_program: Program<'info, Token>,
+        pub system_program: Program<'info, System>,
+    }
+    
+    pub fn treasury_transfer(
+        ctx: Context<TreasuryTransfer>,
+        sol_amount: u64,
+        usdc_amount: u64,
+    ) -> Result<()> {
+        instructions::treasury_transfer::handler(ctx, sol_amount, usdc_amount)
+    }
 }
