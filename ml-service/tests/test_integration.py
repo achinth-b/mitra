@@ -1,8 +1,12 @@
-"""Integration tests for ML service"""
+"""Integration tests for ML service.
+
+These tests verify the FastAPI endpoints work correctly.
+"""
 
 import pytest
-import httpx
 from fastapi.testclient import TestClient
+
+# Import app from the math service
 from main import app
 
 

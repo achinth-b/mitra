@@ -80,8 +80,9 @@ impl Committer {
 
             // Get total volume for event
             let total_volume = self.state_manager.get_total_volume(event.id).await?;
+            use rust_decimal::prelude::ToPrimitive;
             let volume_cents = total_volume
-                .map(|v| (v * rust_decimal::Decimal::new(100, 0)).to_u64().unwrap_or(0))
+                .and_then(|v| (v * rust_decimal::Decimal::new(100, 0)).to_u64())
                 .unwrap_or(0);
 
             // Check if we should commit (volume threshold or time-based)

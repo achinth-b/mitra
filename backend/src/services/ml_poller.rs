@@ -4,6 +4,7 @@ use crate::models::{Event, EventStatus};
 use crate::repositories::{EventRepository, BetRepository};
 use crate::websocket::WebSocketServer;
 use rust_decimal::Decimal;
+use rust_decimal::prelude::ToPrimitive;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
@@ -99,12 +100,12 @@ impl MlPoller {
                     .collect();
 
                 self.ws_server
-                    .broadcast_price_update(event.id, prices_f64)
+                    .broadcast_price_update(event.id, prices_f64.clone())
                     .await;
 
-                // Update last known prices
+                // Update last known prices (convert Decimal to f64 for storage)
                 let mut last_prices = self.last_prices.write().await;
-                last_prices.insert(event.id, current_prices);
+                last_prices.insert(event.id, prices_f64);
             }
         }
 
@@ -146,19 +147,18 @@ impl MlPoller {
         if let Some(last) = last_prices.get(&event_id) {
             // Check if any price changed by more than threshold
             for (outcome, current_price) in current_prices {
-                if let Some(last_price) = last.get(outcome) {
-                    let current_f64 = current_price.to_f64().unwrap_or(0.0);
-                    let last_f64 = last_price.to_f64().unwrap_or(0.0);
-
+                let current_f64 = current_price.to_f64().unwrap_or(0.0);
+                
+                if let Some(&last_f64) = last.get(outcome) {
                     if last_f64 > 0.0 {
                         let change = (current_f64 - last_f64).abs() / last_f64;
                         if change >= self.price_change_threshold {
-                            return true;
+                            return Ok(true);
                         }
                     }
                 } else {
                     // New outcome, broadcast
-                    return true;
+                    return Ok(true);
                 }
             }
             Ok(false)
@@ -221,9 +221,10 @@ impl MlPoller {
                             let recommended_decimal: HashMap<String, Decimal> = recommended_map
                                 .into_iter()
                                 .map(|(k, v)| {
-                                    // Convert f64 to Decimal
-                                    Decimal::try_from(v as f64)
-                                        .unwrap_or_else(|_| Decimal::from_f64(v).unwrap_or(Decimal::ZERO))
+                                    // Convert f64 to Decimal, keeping the key
+                                    let decimal_value = Decimal::try_from(v)
+                                        .unwrap_or_else(|_| Decimal::from_f64_retain(v).unwrap_or(Decimal::ZERO));
+                                    (k, decimal_value)
                                 })
                                 .collect();
 

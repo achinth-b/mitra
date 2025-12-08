@@ -32,7 +32,7 @@ pub enum EventError {
     #[msg("Invalid resolve_by timestamp")]
     InvalidResolveBy,
     
-    #[msg("Insufficient winnings")]
+    #[msg("Insufficient winnings or treasury balance")]
     InsufficientWinnings,
     
     #[msg("Winnings already claimed")]
@@ -40,4 +40,16 @@ pub enum EventError {
     
     #[msg("Only backend authority can commit state")]
     NotBackendAuthority,
+    
+    #[msg("Invalid treasury account")]
+    InvalidTreasury,
+    
+    #[msg("Invalid token mint")]
+    InvalidMint,
+    
+    #[msg("User is not a group member")]
+    NotGroupMember,
+    
+    #[msg("Amount must be greater than zero")]
+    ZeroAmount,
 }

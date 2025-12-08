@@ -1,3 +1,8 @@
+//! gRPC service implementation for Mitra
+//!
+//! This module implements the MitraService gRPC handlers using tonic.
+//! The proto definitions are compiled at build time via build.rs.
+
 use crate::amm::LmsrAmm;
 use crate::auth;
 use crate::error::{AppError, AppResult};
@@ -5,20 +10,33 @@ use crate::models::{Event, EventStatus, SettlementType};
 use crate::repositories::*;
 use crate::state_manager::StateManager;
 use rust_decimal::Decimal;
+use rust_decimal::prelude::ToPrimitive;
+use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{error, info};
+use tonic::{Request, Response, Status};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
+// Include the generated proto code
+// Falls back to stub implementation if protoc is not available
+pub mod proto {
+    include!(concat!(env!("OUT_DIR"), "/mitra.rs"));
+}
+
+use proto::mitra_service_server::MitraServiceServer;
+use proto::{
+    CreateGroupRequest, GroupResponse, InviteMemberRequest, MemberResponse,
+    CreateEventRequest, EventResponse, PlaceBetRequest, BetResponse,
+    GetPricesRequest, PricesResponse, SettleEventRequest, SettleResponse,
+};
+
 /// gRPC service implementation
-/// 
-/// Note: This is a skeleton implementation. The actual gRPC code will be generated
-/// from the proto file using tonic-build. This module provides the business logic.
-pub struct MitraService {
+pub struct MitraGrpcService {
     app_state: Arc<crate::AppState>,
     state_manager: Arc<StateManager>,
 }
 
-impl MitraService {
+impl MitraGrpcService {
     /// Create a new gRPC service
     pub fn new(app_state: Arc<crate::AppState>, state_manager: Arc<StateManager>) -> Self {
         Self {
@@ -27,142 +45,260 @@ impl MitraService {
         }
     }
 
+    /// Create a tonic server for this service
+    pub fn into_server(self) -> MitraServiceServer<Self> {
+        MitraServiceServer::new(self)
+    }
+
+    /// Convert AppError to tonic Status
+    fn to_status(err: AppError) -> Status {
+        match err {
+            AppError::NotFound(msg) => Status::not_found(msg),
+            AppError::Unauthorized(msg) => Status::unauthenticated(msg),
+            AppError::Validation(msg) => Status::invalid_argument(msg),
+            AppError::BusinessLogic(msg) => Status::failed_precondition(msg),
+            AppError::Database(_) | AppError::Sqlx(_) => {
+                error!("Database error: {:?}", err);
+                Status::internal("Database error")
+            }
+            _ => {
+                error!("Internal error: {:?}", err);
+                Status::internal("Internal server error")
+            }
+        }
+    }
+
+    /// Helper to parse UUID from string
+    fn parse_uuid(s: &str, field_name: &str) -> Result<Uuid, Status> {
+        Uuid::parse_str(s)
+            .map_err(|_| Status::invalid_argument(format!("Invalid {}: {}", field_name, s)))
+    }
+}
+
+#[tonic::async_trait]
+impl proto::MitraService for MitraGrpcService {
     /// Create a friend group
-    pub async fn create_friend_group(
+    async fn create_friend_group(
         &self,
-        name: String,
-        admin_wallet: String,
-        solana_pubkey: String,
-        signature: String,
-    ) -> AppResult<(Uuid, String)> {
+        request: Request<CreateGroupRequest>,
+    ) -> Result<Response<GroupResponse>, Status> {
+        let req = request.into_inner();
+        info!("CreateFriendGroup request: name={}", req.name);
+
         // Verify signature
         auth::verify_auth_with_timestamp(
-            &admin_wallet,
+            &req.admin_wallet,
             "create_group",
             chrono::Utc::now().timestamp(),
-            &signature,
-        )?;
+            &req.signature,
+        )
+        .map_err(Self::to_status)?;
 
         // Create group in database
         let group = self
             .app_state
             .friend_group_repo
-            .create(&solana_pubkey, &name, &admin_wallet)
+            .create(&req.solana_pubkey, &req.name, &req.admin_wallet)
             .await
-            .map_err(|e| AppError::Database(crate::database::DatabaseError::PoolCreation(e)))?;
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+
+        // Add admin as first member
+        let admin_user = self
+            .app_state
+            .user_repo
+            .find_or_create_by_wallet(&req.admin_wallet)
+            .await
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+
+        self.app_state
+            .group_member_repo
+            .add_member(group.id, admin_user.id, crate::models::MemberRole::Admin)
+            .await
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
 
         info!("Created friend group: {} ({})", group.id, group.name);
 
-        Ok((group.id, solana_pubkey))
+        Ok(Response::new(GroupResponse {
+            group_id: group.id.to_string(),
+            solana_pubkey: group.solana_pubkey,
+            name: group.name,
+            admin_wallet: group.admin_wallet,
+            created_at: group.created_at.and_utc().timestamp(),
+        }))
     }
 
     /// Invite a member to a group
-    pub async fn invite_member(
+    async fn invite_member(
         &self,
-        group_id: Uuid,
-        invited_wallet: String,
-        inviter_wallet: String,
-        signature: String,
-    ) -> AppResult<Uuid> {
+        request: Request<InviteMemberRequest>,
+    ) -> Result<Response<MemberResponse>, Status> {
+        let req = request.into_inner();
+        let group_id = Self::parse_uuid(&req.group_id, "group_id")?;
+        
+        info!("InviteMember request: group={}, invited={}", group_id, req.invited_wallet);
+
         // Verify signature
         auth::verify_auth_with_timestamp(
-            &inviter_wallet,
+            &req.inviter_wallet,
             "invite_member",
             chrono::Utc::now().timestamp(),
-            &signature,
-        )?;
+            &req.signature,
+        )
+        .map_err(Self::to_status)?;
 
-        // Verify inviter is admin
-        let role = self
-            .app_state
-            .group_member_repo
-            .find_role(group_id, Uuid::new_v4()) // TODO: Get user_id from wallet
-            .await
-            .map_err(|e| AppError::Database(crate::database::DatabaseError::PoolCreation(e)))?;
-
-        // TODO: Check if inviter is admin
-
-        // Find or create user
-        let user = self
+        // Verify inviter is admin or member
+        let inviter_user = self
             .app_state
             .user_repo
-            .find_or_create_by_wallet(&invited_wallet)
+            .find_or_create_by_wallet(&req.inviter_wallet)
             .await
-            .map_err(|e| AppError::Database(crate::database::DatabaseError::PoolCreation(e)))?;
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
 
-        // Add member
+        let is_member = self
+            .app_state
+            .group_member_repo
+            .is_member(group_id, inviter_user.id)
+            .await
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+
+        if !is_member {
+            return Err(Status::permission_denied("Only group members can invite"));
+        }
+
+        // Find or create invited user
+        let invited_user = self
+            .app_state
+            .user_repo
+            .find_or_create_by_wallet(&req.invited_wallet)
+            .await
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+
+        // Add as member
         let member = self
             .app_state
             .group_member_repo
-            .add_member(group_id, user.id, crate::models::MemberRole::Member)
+            .add_member(group_id, invited_user.id, crate::models::MemberRole::Member)
             .await
-            .map_err(|e| AppError::Database(crate::database::DatabaseError::PoolCreation(e)))?;
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
 
-        Ok(member.user_id)
+        info!("Added member {} to group {}", invited_user.id, group_id);
+
+        Ok(Response::new(MemberResponse {
+            group_id: group_id.to_string(),
+            user_id: invited_user.id.to_string(),
+            wallet_address: invited_user.wallet_address,
+            role: "member".to_string(),
+            joined_at: member.joined_at.and_utc().timestamp(),
+        }))
     }
 
     /// Create an event
-    pub async fn create_event(
+    async fn create_event(
         &self,
-        group_id: Uuid,
-        title: String,
-        description: Option<String>,
-        outcomes: Vec<String>,
-        settlement_type: SettlementType,
-        resolve_by: Option<chrono::NaiveDateTime>,
-        creator_wallet: String,
-        signature: String,
-    ) -> AppResult<Event> {
+        request: Request<CreateEventRequest>,
+    ) -> Result<Response<EventResponse>, Status> {
+        let req = request.into_inner();
+        let group_id = Self::parse_uuid(&req.group_id, "group_id")?;
+        
+        info!("CreateEvent request: group={}, title={}", group_id, req.title);
+
         // Verify signature
         auth::verify_auth_with_timestamp(
-            &creator_wallet,
+            &req.creator_wallet,
             "create_event",
             chrono::Utc::now().timestamp(),
-            &signature,
-        )?;
+            &req.signature,
+        )
+        .map_err(Self::to_status)?;
 
         // Verify creator is group member
-        // TODO: Implement member check
+        let creator_user = self
+            .app_state
+            .user_repo
+            .find_or_create_by_wallet(&req.creator_wallet)
+            .await
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+
+        let is_member = self
+            .app_state
+            .group_member_repo
+            .is_member(group_id, creator_user.id)
+            .await
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+
+        if !is_member {
+            return Err(Status::permission_denied("Only group members can create events"));
+        }
+
+        // Validate outcomes
+        if req.outcomes.len() < 2 {
+            return Err(Status::invalid_argument("At least 2 outcomes required"));
+        }
+
+        // Parse resolve_by timestamp
+        let resolve_by = if req.resolve_by > 0 {
+            Some(chrono::DateTime::from_timestamp(req.resolve_by, 0)
+                .map(|dt| dt.naive_utc())
+                .ok_or_else(|| Status::invalid_argument("Invalid resolve_by timestamp"))?)
+        } else {
+            None
+        };
 
         // Create event
-        let outcomes_json = serde_json::to_value(outcomes.clone())
-            .map_err(|e| AppError::Serialization(e))?;
+        let outcomes_json = serde_json::to_value(&req.outcomes)
+            .map_err(|e| Status::internal(format!("Serialization error: {}", e)))?;
 
         let event = self
             .app_state
             .event_repo
             .create(
                 group_id,
-                &title,
-                description.as_deref(),
+                &req.title,
+                Some(&req.description),
                 &outcomes_json,
-                &settlement_type.as_str().to_string(),
+                &req.settlement_type,
                 resolve_by,
             )
             .await
-            .map_err(|e| AppError::Database(crate::database::DatabaseError::PoolCreation(e)))?;
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
 
         info!("Created event: {} ({})", event.id, event.title);
 
-        Ok(event)
+        let description = event.description.clone().unwrap_or_default();
+        let outcomes = event.outcomes_vec();
+        
+        Ok(Response::new(EventResponse {
+            event_id: event.id.to_string(),
+            group_id: event.group_id.to_string(),
+            solana_pubkey: event.solana_pubkey.unwrap_or_default(),
+            title: event.title,
+            description,
+            outcomes,
+            settlement_type: event.settlement_type,
+            status: event.status,
+            resolve_by: event.resolve_by.map(|dt| dt.and_utc().timestamp()).unwrap_or(0),
+            created_at: event.created_at.and_utc().timestamp(),
+        }))
     }
 
     /// Place a bet
-    pub async fn place_bet(
+    async fn place_bet(
         &self,
-        event_id: Uuid,
-        user_wallet: String,
-        outcome: String,
-        amount_usdc: Decimal,
-        signature: String,
-    ) -> AppResult<(Uuid, Decimal, Decimal, HashMap<String, Decimal>)> {
+        request: Request<PlaceBetRequest>,
+    ) -> Result<Response<BetResponse>, Status> {
+        let req = request.into_inner();
+        let event_id = Self::parse_uuid(&req.event_id, "event_id")?;
+        
+        info!("PlaceBet request: event={}, outcome={}, amount={}", event_id, req.outcome, req.amount_usdc);
+
         // Verify signature
         auth::verify_auth_with_timestamp(
-            &user_wallet,
+            &req.user_wallet,
             "place_bet",
             chrono::Utc::now().timestamp(),
-            &signature,
-        )?;
+            &req.signature,
+        )
+        .map_err(Self::to_status)?;
 
         // Get event
         let event = self
@@ -170,27 +306,27 @@ impl MitraService {
             .event_repo
             .find_by_id(event_id)
             .await
-            .map_err(|e| AppError::Database(crate::database::DatabaseError::PoolCreation(e)))?
-            .ok_or_else(|| AppError::NotFound(format!("Event {} not found", event_id)))?;
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?
+            .ok_or_else(|| Status::not_found(format!("Event {} not found", event_id)))?;
 
         // Verify event is active
         if !event.is_active() {
-            return Err(AppError::BusinessLogic("Event is not active".to_string()));
+            return Err(Status::failed_precondition("Event is not active"));
         }
 
         // Verify outcome is valid
         let outcomes = event.outcomes_vec();
-        if !outcomes.contains(&outcome) {
-            return Err(AppError::Validation(format!("Invalid outcome: {}", outcome)));
+        if !outcomes.contains(&req.outcome) {
+            return Err(Status::invalid_argument(format!("Invalid outcome: {}", req.outcome)));
         }
 
         // Find or create user
         let user = self
             .app_state
             .user_repo
-            .find_or_create_by_wallet(&user_wallet)
+            .find_or_create_by_wallet(&req.user_wallet)
             .await
-            .map_err(|e| AppError::Database(crate::database::DatabaseError::PoolCreation(e)))?;
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
 
         // Get current bets to calculate AMM state
         let bets = self
@@ -198,40 +334,229 @@ impl MitraService {
             .bet_repo
             .find_by_event(event_id)
             .await
-            .map_err(|e| AppError::Database(crate::database::DatabaseError::PoolCreation(e)))?;
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+
+        // Convert amount to Decimal
+        let amount_usdc = Decimal::try_from(req.amount_usdc)
+            .map_err(|_| Status::invalid_argument("Invalid amount"))?;
+
+        if amount_usdc <= Decimal::ZERO {
+            return Err(Status::invalid_argument("Amount must be positive"));
+        }
 
         // Initialize AMM with current state
         let mut amm = LmsrAmm::new(Decimal::new(100, 0), outcomes.clone())
-            .map_err(|e| AppError::BusinessLogic(format!("AMM error: {}", e)))?;
+            .map_err(|e| Status::internal(format!("AMM error: {}", e)))?;
 
         // Update AMM with existing shares
         for bet in &bets {
             amm.update_shares(&bet.outcome, bet.shares)
-                .map_err(|e| AppError::BusinessLogic(format!("AMM error: {}", e)))?;
+                .map_err(|e| Status::internal(format!("AMM error: {}", e)))?;
         }
 
         // Calculate buy
         let (shares, price, new_prices) = amm
-            .calculate_buy(&outcome, amount_usdc)
-            .map_err(|e| AppError::BusinessLogic(format!("AMM error: {}", e)))?;
+            .calculate_buy(&req.outcome, amount_usdc)
+            .map_err(|e| Status::internal(format!("AMM error: {}", e)))?;
 
         // Create bet
         let bet = self
             .app_state
             .bet_repo
-            .create(event_id, user.id, &outcome, shares, price, amount_usdc)
+            .create(event_id, user.id, &req.outcome, shares, price, amount_usdc)
             .await
-            .map_err(|e| AppError::Database(crate::database::DatabaseError::PoolCreation(e)))?;
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
 
         info!(
             "Bet placed: {} on event {} for {} shares at price {}",
             bet.id, event_id, shares, price
         );
 
-        Ok((bet.id, shares, price, new_prices))
+        // Convert prices to f64 for response
+        let prices_f64: HashMap<String, f64> = new_prices
+            .iter()
+            .map(|(k, v)| (k.clone(), v.to_f64().unwrap_or(0.0)))
+            .collect();
+
+        Ok(Response::new(BetResponse {
+            bet_id: bet.id.to_string(),
+            shares: shares.to_f64().unwrap_or(0.0),
+            price: price.to_f64().unwrap_or(0.0),
+            updated_prices: Some(PricesResponse {
+                event_id: event_id.to_string(),
+                prices: prices_f64,
+                total_volume: bets.iter().map(|b| b.amount_usdc.to_f64().unwrap_or(0.0)).sum::<f64>() + req.amount_usdc,
+                timestamp: chrono::Utc::now().timestamp(),
+            }),
+        }))
     }
 
     /// Get event prices
+    async fn get_event_prices(
+        &self,
+        request: Request<GetPricesRequest>,
+    ) -> Result<Response<PricesResponse>, Status> {
+        let req = request.into_inner();
+        let event_id = Self::parse_uuid(&req.event_id, "event_id")?;
+        
+        // Get event
+        let event = self
+            .app_state
+            .event_repo
+            .find_by_id(event_id)
+            .await
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?
+            .ok_or_else(|| Status::not_found(format!("Event {} not found", event_id)))?;
+
+        // Get bets
+        let bets = self
+            .app_state
+            .bet_repo
+            .find_by_event(event_id)
+            .await
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+
+        // Initialize AMM
+        let mut amm = LmsrAmm::new(Decimal::new(100, 0), event.outcomes_vec())
+            .map_err(|e| Status::internal(format!("AMM error: {}", e)))?;
+
+        // Update with existing shares
+        for bet in &bets {
+            amm.update_shares(&bet.outcome, bet.shares)
+                .map_err(|e| Status::internal(format!("AMM error: {}", e)))?;
+        }
+
+        // Get prices
+        let prices = amm
+            .get_prices()
+            .map_err(|e| Status::internal(format!("AMM error: {}", e)))?;
+
+        // Convert to f64
+        let prices_f64: HashMap<String, f64> = prices
+            .iter()
+            .map(|(k, v)| (k.clone(), v.to_f64().unwrap_or(0.0)))
+            .collect();
+
+        let total_volume: f64 = bets
+            .iter()
+            .map(|b| b.amount_usdc.to_f64().unwrap_or(0.0))
+            .sum();
+
+        Ok(Response::new(PricesResponse {
+            event_id: event_id.to_string(),
+            prices: prices_f64,
+            total_volume,
+            timestamp: chrono::Utc::now().timestamp(),
+        }))
+    }
+
+    /// Settle an event
+    async fn settle_event(
+        &self,
+        request: Request<SettleEventRequest>,
+    ) -> Result<Response<SettleResponse>, Status> {
+        let req = request.into_inner();
+        let event_id = Self::parse_uuid(&req.event_id, "event_id")?;
+        
+        info!("SettleEvent request: event={}, outcome={}", event_id, req.winning_outcome);
+
+        // Verify signature
+        auth::verify_auth_with_timestamp(
+            &req.settler_wallet,
+            "settle_event",
+            chrono::Utc::now().timestamp(),
+            &req.signature,
+        )
+        .map_err(Self::to_status)?;
+
+        // Get event
+        let event = self
+            .app_state
+            .event_repo
+            .find_by_id(event_id)
+            .await
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?
+            .ok_or_else(|| Status::not_found(format!("Event {} not found", event_id)))?;
+
+        // Verify event is active
+        if !event.is_active() {
+            return Err(Status::failed_precondition("Event is already settled or cancelled"));
+        }
+
+        // Verify settler is admin of the group
+        let settler_user = self
+            .app_state
+            .user_repo
+            .find_or_create_by_wallet(&req.settler_wallet)
+            .await
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+
+        let role = self
+            .app_state
+            .group_member_repo
+            .find_role(event.group_id, settler_user.id)
+            .await
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+
+        match role {
+            Some(crate::models::MemberRole::Admin) => {}
+            _ => return Err(Status::permission_denied("Only admins can settle events")),
+        }
+
+        // Verify outcome is valid
+        let outcomes = event.outcomes_vec();
+        if !outcomes.contains(&req.winning_outcome) {
+            return Err(Status::invalid_argument(format!(
+                "Invalid outcome: {}. Valid outcomes: {:?}",
+                req.winning_outcome, outcomes
+            )));
+        }
+
+        // Update status
+        self.app_state
+            .event_repo
+            .update_status(event_id, EventStatus::Resolved)
+            .await
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+
+        // TODO: Call Solana program to settle on-chain
+        // For PoC, generate a simulated tx signature
+        let tx_signature = format!(
+            "settle_{}_{}",
+            event_id.to_string().chars().take(8).collect::<String>(),
+            chrono::Utc::now().timestamp()
+        );
+
+        info!("Event {} settled with outcome: {}", event_id, req.winning_outcome);
+
+        Ok(Response::new(SettleResponse {
+            event_id: event_id.to_string(),
+            winning_outcome: req.winning_outcome,
+            settled_at: chrono::Utc::now().timestamp(),
+            solana_tx_signature: tx_signature,
+        }))
+    }
+}
+
+// Legacy compatibility: Keep the old MitraService struct for business logic
+// This can be used by other parts of the system that don't go through gRPC
+
+/// Business logic service (non-gRPC interface)
+pub struct MitraService {
+    app_state: Arc<crate::AppState>,
+    state_manager: Arc<StateManager>,
+}
+
+impl MitraService {
+    /// Create a new service
+    pub fn new(app_state: Arc<crate::AppState>, state_manager: Arc<StateManager>) -> Self {
+        Self {
+            app_state,
+            state_manager,
+        }
+    }
+
+    /// Get event prices (business logic method)
     pub async fn get_event_prices(
         &self,
         event_id: Uuid,
@@ -267,54 +592,4 @@ impl MitraService {
         amm.get_prices()
             .map_err(|e| AppError::BusinessLogic(format!("AMM error: {}", e)))
     }
-
-    /// Settle an event
-    pub async fn settle_event(
-        &self,
-        event_id: Uuid,
-        winning_outcome: String,
-        settler_wallet: String,
-        signature: String,
-    ) -> AppResult<String> {
-        // Verify signature
-        auth::verify_auth_with_timestamp(
-            &settler_wallet,
-            "settle_event",
-            chrono::Utc::now().timestamp(),
-            &signature,
-        )?;
-
-        // Get event
-        let event = self
-            .app_state
-            .event_repo
-            .find_by_id(event_id)
-            .await
-            .map_err(|e| AppError::Database(crate::database::DatabaseError::PoolCreation(e)))?
-            .ok_or_else(|| AppError::NotFound(format!("Event {} not found", event_id)))?;
-
-        // Verify outcome is valid
-        let outcomes = event.outcomes_vec();
-        if !outcomes.contains(&winning_outcome) {
-            return Err(AppError::Validation(format!("Invalid outcome: {}", winning_outcome)));
-        }
-
-        // Update status
-        self.app_state
-            .event_repo
-            .update_status(event_id, EventStatus::Resolved)
-            .await
-            .map_err(|e| AppError::Database(crate::database::DatabaseError::PoolCreation(e)))?;
-
-        // TODO: Call Solana program to settle on-chain
-        // For MVP, return placeholder
-        let tx_signature = "placeholder_settle_tx".to_string();
-
-        info!("Event {} settled with outcome: {}", event_id, winning_outcome);
-
-        Ok(tx_signature)
-    }
 }
-
-use std::collections::HashMap;
-

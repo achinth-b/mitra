@@ -164,7 +164,7 @@ impl LmsrAmm {
         for price in prices.values_mut() {
             *price = *price / sum;
             // Re-apply constraints
-            *price = price.max(self.min_price).min(self.max_price);
+            *price = (*price).max(self.min_price).min(self.max_price);
         }
 
         // Final normalization after constraints

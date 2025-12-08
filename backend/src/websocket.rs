@@ -91,6 +91,7 @@ impl WebSocketServer {
 
     /// Subscribe a client to a channel
     pub async fn subscribe(&self, client_id: Uuid, channel: String) {
+        let channel_clone = channel.clone();
         let mut subscriptions = self.subscriptions.write().await;
         let mut client_channels = self.client_channels.write().await;
 
@@ -104,9 +105,9 @@ impl WebSocketServer {
         client_channels
             .entry(client_id)
             .or_insert_with(Vec::new)
-            .push(channel);
+            .push(channel.clone());
 
-        info!("Client {} subscribed to {}", client_id, channel);
+        info!("Client {} subscribed to {}", client_id, channel_clone);
     }
 
     /// Unsubscribe a client from a channel
@@ -261,6 +262,7 @@ impl WebSocketServer {
         shares: f64,
         price: f64,
     ) {
+        let user_wallet_clone = user_wallet.clone();
         let message = WsMessage::BetExecuted {
             bet_id: bet_id.to_string(),
             user: user_wallet,
@@ -274,7 +276,7 @@ impl WebSocketServer {
         self.broadcast_to_channel(&event_channel, message.clone()).await;
 
         // Also broadcast to user's own channel
-        let user_channel = format!("user:{}", user_wallet);
+        let user_channel = format!("user:{}", user_wallet_clone);
         self.broadcast_to_channel(&user_channel, message).await;
     }
 

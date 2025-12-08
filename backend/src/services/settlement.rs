@@ -1,23 +1,14 @@
 use crate::error::{AppError, AppResult};
-use crate::models::{Event, EventStatus};
-use crate::repositories::{EventRepository, BetRepository, GroupMemberRepository};
+use crate::models::{Event, EventStatus, SettlementType};
+use crate::repositories::{BetRepository, EventRepository, GroupMemberRepository};
 use crate::solana_client::SolanaClient;
 use crate::websocket::WebSocketServer;
-use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use uuid::Uuid;
-
-/// Settlement type
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum SettlementType {
-    Manual,
-    Oracle,
-    Consensus,
-}
 
 /// Vote for consensus settlement
 #[derive(Debug, Clone, Serialize, Deserialize)]

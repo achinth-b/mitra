@@ -10,17 +10,7 @@ description = "Backend service for Mitra prediction market platform"
 tokio = { version = "1", features = ["full"] }
 
 # Database
-sqlx = { 
-    version = "0.7", 
-    features = [
-        "runtime-tokio-native-tls",
-        "postgres",
-        "chrono",
-        "uuid",
-        "migrate",
-        "decimal"
-    ] 
-}
+sqlx = { version = "0.7.4", features = ["runtime-tokio-native-tls", "postgres", "chrono", "uuid", "migrate", "rust_decimal"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -30,6 +20,9 @@ serde_json = "1"
 tonic = "0.11"
 prost = "0.12"
 prost-types = "0.12"
+http = "1.0"
+http-body = "1.0"
+tower-service = "0.3"
 
 # Error handling
 anyhow = "1.0"
@@ -52,9 +45,17 @@ uuid = { version = "1", features = ["v4", "serde"] }
 rust_decimal = { version = "1", features = ["serde-with-str", "std"] }
 
 # Solana client (for on-chain interactions)
-solana-client = "1.18"
-solana-sdk = "1.18"
-anchor-client = "0.32.1"
+# Using Solana 2.x to match Anchor 0.32.x
+solana-client = "2.0"
+solana-sdk = "2.0"
+anchor-client = "0.32.0"
+anchor-lang = "0.32.0"
+
+# Base58 encoding (for keypair handling)
+bs58 = "0.5"
+
+# Keccak256 hashing (for PDA derivation matching Solana contracts)
+sha3 = "0.10"
 
 # HTTP client (if needed for external APIs)
 reqwest = { version = "0.11", features = ["json", "stream"] }
@@ -68,8 +69,8 @@ tokio-tungstenite = "0.21"
 
 # Cryptography
 sha2 = "0.10"
-ed25519-dalek = "2.1"
 hex = "0.4"
+# Note: ed25519-dalek is provided by solana-sdk
 
 [build-dependencies]
 # gRPC code generation
@@ -79,18 +80,6 @@ prost-build = "0.12"
 [dev-dependencies]
 # Testing
 tokio-test = "0.4"
-sqlx = { 
-    version = "0.7", 
-    features = [
-        "runtime-tokio-native-tls",
-        "postgres",
-        "chrono",
-        "uuid",
-        "migrate",
-        "decimal",
-        "testing"
-    ] 
-}
 
 [profile.release]
 opt-level = 3

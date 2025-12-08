@@ -91,7 +91,7 @@ impl AppError {
 pub enum RepositoryError {
     /// Database query error
     #[error("Query error: {0}")]
-    Query(#[from] SqlxError),
+    Query(SqlxError),
 
     /// Record not found
     #[error("Record not found")]
@@ -128,13 +128,14 @@ impl From<SqlxError> for RepositoryError {
             SqlxError::RowNotFound => RepositoryError::NotFound,
             SqlxError::Database(db_err) => {
                 // Check for common PostgreSQL error codes
-                if db_err.code() == Some("23505") {
+                let code = db_err.code().map(|c| c.to_string());
+                if code.as_deref() == Some("23505") {
                     // Unique violation
                     RepositoryError::Duplicate(db_err.message().to_string())
-                } else if db_err.code() == Some("23503") {
+                } else if code.as_deref() == Some("23503") {
                     // Foreign key violation
                     RepositoryError::ConstraintViolation(db_err.message().to_string())
-                } else if db_err.code() == Some("23514") {
+                } else if code.as_deref() == Some("23514") {
                     // Check constraint violation
                     RepositoryError::ConstraintViolation(db_err.message().to_string())
                 } else {

@@ -203,31 +203,35 @@ pub mod events {
     
     #[derive(Accounts)]
     pub struct ClaimWinnings<'info> {
-        #[account(mut)]
-        pub event_contract: Account<'info, EventContract>,
-        
-        /// CHECK: Friend group account
-        pub group: Account<'info, FriendGroup>,
-        
-        /// CHECK: USDC treasury token account
         #[account(
             mut,
-            constraint = treasury_usdc.owner == group.key() @ EventError::Unauthorized
+            constraint = event_contract.status == EventStatus::Resolved @ EventError::EventNotSettled,
+            constraint = event_contract.group == group.key() @ EventError::Unauthorized
+        )]
+        pub event_contract: Account<'info, EventContract>,
+        
+        /// Friend group account - validates event belongs to this group
+        pub group: Account<'info, FriendGroup>,
+        
+        /// USDC treasury token account owned by the friend group PDA
+        #[account(
+            mut,
+            constraint = treasury_usdc.owner == group.key() @ EventError::InvalidTreasury
         )]
         pub treasury_usdc: Account<'info, TokenAccount>,
         
-        /// CHECK: User's USDC token account (destination)
+        /// User's USDC token account (destination for winnings)
         #[account(
             mut,
-            constraint = user_usdc_account.owner == token_program.key() @ EventError::Unauthorized,
-            constraint = user_usdc_account.mint == treasury_usdc.mint @ EventError::Unauthorized
+            constraint = user_usdc_account.mint == treasury_usdc.mint @ EventError::InvalidMint
         )]
         pub user_usdc_account: Account<'info, TokenAccount>,
         
-        /// CHECK: Member account (we'll verify it exists)
+        /// Member account verifying user is a group member
         #[account(
             seeds = [b"member", group.key().as_ref(), user.key().as_ref()],
-            bump
+            bump,
+            constraint = member.data_len() > 0 @ EventError::NotGroupMember
         )]
         pub member: AccountInfo<'info>,
         
@@ -241,37 +245,8 @@ pub mod events {
         ctx: Context<ClaimWinnings>,
         amount: u64,
     ) -> Result<()> {
-        let event = &ctx.accounts.event_contract;
-        
-        require!(
-            event.status == EventStatus::Resolved,
-            EventError::EventNotSettled
-        );
-        
-        require!(
-            event.group == ctx.accounts.group.key(),
-            EventError::Unauthorized
-        );
-        
-        require!(amount > 0, EventError::InsufficientWinnings);
-        
-        // Validate user is the signer
-        require!(
-            ctx.accounts.user.key() == ctx.accounts.user_usdc_account.owner,
-            EventError::Unauthorized
-        );
-        
-        // Validate treasury USDC account belongs to friend group
-        require!(
-            ctx.accounts.treasury_usdc.owner == ctx.accounts.group.key(),
-            EventError::Unauthorized
-        );
-        
-        // Validate token account mint matches treasury mint
-        require!(
-            ctx.accounts.user_usdc_account.mint == ctx.accounts.treasury_usdc.mint,
-            EventError::Unauthorized
-        );
+        // Input validation (constraints handle account validation)
+        require!(amount > 0, EventError::ZeroAmount);
         
         // Validate treasury has sufficient balance
         require!(
@@ -280,7 +255,7 @@ pub mod events {
         );
         
         // Transfer USDC from treasury to user
-        let group_account_info = ctx.accounts.group.to_account_info();
+        // Note: The friend_group PDA is the authority for the treasury
         let seeds = &[
             b"friend_group",
             ctx.accounts.group.admin.as_ref(),
@@ -291,7 +266,7 @@ pub mod events {
         let cpi_accounts = Transfer {
             from: ctx.accounts.treasury_usdc.to_account_info(),
             to: ctx.accounts.user_usdc_account.to_account_info(),
-            authority: group_account_info,
+            authority: ctx.accounts.group.to_account_info(),
         };
         
         let cpi_ctx = CpiContext::new_with_signer(
