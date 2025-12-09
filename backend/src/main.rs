@@ -232,7 +232,14 @@ async fn main() -> AppResult<()> {
     // Use serve_with_shutdown for graceful shutdown support
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
     
+    // Load file descriptor for gRPC reflection
+    let reflection_service = tonic_reflection::server::Builder::configure()
+        .register_encoded_file_descriptor_set(grpc_service::proto::FILE_DESCRIPTOR_SET)
+        .build()
+        .map_err(|e| AppError::Message(format!("Failed to create reflection service: {}", e)))?;
+    
     let grpc_server = Server::builder()
+        .add_service(reflection_service)
         .add_service(grpc_service.into_server())
         .serve_with_shutdown(grpc_addr, async {
             shutdown_rx.await.ok();

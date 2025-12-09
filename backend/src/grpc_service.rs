@@ -21,6 +21,9 @@ use uuid::Uuid;
 // Falls back to stub implementation if protoc is not available
 pub mod proto {
     include!(concat!(env!("OUT_DIR"), "/mitra.rs"));
+    
+    /// File descriptor set for gRPC reflection
+    pub const FILE_DESCRIPTOR_SET: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/mitra_descriptor.bin"));
 }
 
 use proto::mitra_service_server::{MitraService, MitraServiceServer};

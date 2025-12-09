@@ -6,11 +6,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Tell Cargo to rerun if migrations directory changes
     println!("cargo:rerun-if-changed=migrations");
 
-    // Build gRPC code from proto file
-    // Use default OUT_DIR for tonic output (standard approach)
+    // Get OUT_DIR for file descriptor
+    let out_dir = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    let descriptor_path = out_dir.join("mitra_descriptor.bin");
+
+    // Build gRPC code from proto file with file descriptor for reflection
     match tonic_build::configure()
         .build_server(true)
         .build_client(true)
+        .file_descriptor_set_path(&descriptor_path)
         .compile(&[proto_file], &["../shared/proto"])
     {
         Ok(_) => {

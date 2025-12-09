@@ -152,6 +152,23 @@ impl WebSocketServer {
         // Spawn task to handle incoming messages
         let ws_server = self.clone();
         
+        // Clone sender for use in the spawned task
+        let ws_server_for_receiver = ws_server.clone();
+        
+        // Send welcome message
+        let welcome = serde_json::json!({
+            "type": "connected",
+            "client_id": client_id.to_string(),
+            "message": "Connected to Mitra WebSocket server"
+        });
+        if let Err(e) = ws_sender.send(Message::Text(welcome.to_string())).await {
+            warn!("Failed to send welcome message: {}", e);
+        }
+        
+        // Need to wrap sender in Arc<Mutex> to share between tasks
+        let ws_sender = std::sync::Arc::new(tokio::sync::Mutex::new(ws_sender));
+        let ws_sender_for_receiver = ws_sender.clone();
+        
         tokio::spawn(async move {
             while let Some(msg) = ws_receiver.next().await {
                 match msg {
@@ -160,10 +177,28 @@ impl WebSocketServer {
                         if let Ok(sub_msg) = serde_json::from_str::<WsMessage>(&text) {
                             match sub_msg {
                                 WsMessage::Subscribe { channel } => {
-                                    ws_server.subscribe(client_id, channel).await;
+                                    ws_server_for_receiver.subscribe(client_id, channel.clone()).await;
+                                    // Send acknowledgment
+                                    let ack = serde_json::json!({
+                                        "type": "subscribed",
+                                        "channel": channel
+                                    });
+                                    let mut sender = ws_sender_for_receiver.lock().await;
+                                    if let Err(e) = sender.send(Message::Text(ack.to_string())).await {
+                                        warn!("Failed to send ack: {}", e);
+                                    }
                                 }
                                 WsMessage::Unsubscribe { channel } => {
-                                    ws_server.unsubscribe(client_id, &channel).await;
+                                    ws_server_for_receiver.unsubscribe(client_id, &channel).await;
+                                    // Send acknowledgment
+                                    let ack = serde_json::json!({
+                                        "type": "unsubscribed",
+                                        "channel": channel
+                                    });
+                                    let mut sender = ws_sender_for_receiver.lock().await;
+                                    if let Err(e) = sender.send(Message::Text(ack.to_string())).await {
+                                        warn!("Failed to send ack: {}", e);
+                                    }
                                 }
                                 _ => {
                                     warn!("Unexpected message type from client {}", client_id);
@@ -171,6 +206,13 @@ impl WebSocketServer {
                             }
                         } else {
                             warn!("Failed to parse message from client {}: {}", client_id, text);
+                            // Send error response
+                            let err = serde_json::json!({
+                                "type": "error",
+                                "message": "Invalid message format"
+                            });
+                            let mut sender = ws_sender_for_receiver.lock().await;
+                            let _ = sender.send(Message::Text(err.to_string())).await;
                         }
                     }
                     Ok(Message::Close(_)) => {
@@ -186,14 +228,15 @@ impl WebSocketServer {
             }
 
             // Clean up all subscriptions for this client
-            let channels = ws_server.get_client_channels(client_id).await;
+            let channels = ws_server_for_receiver.get_client_channels(client_id).await;
             for channel in channels {
-                ws_server.unsubscribe(client_id, &channel).await;
+                ws_server_for_receiver.unsubscribe(client_id, &channel).await;
             }
         });
 
-        // Spawn task to send messages to client
+        // Spawn task to send broadcast messages to client
         let ws_server_clone = self.clone();
+        let ws_sender_for_broadcast = ws_sender.clone();
         tokio::spawn(async move {
             while let Ok(msg) = rx.recv().await {
                 // Check if client is subscribed to relevant channel
@@ -226,7 +269,8 @@ impl WebSocketServer {
                     }
                 };
 
-                if let Err(e) = ws_sender.send(Message::Text(json)).await {
+                let mut sender = ws_sender_for_broadcast.lock().await;
+                if let Err(e) = sender.send(Message::Text(json)).await {
                     error!("Failed to send message to client {}: {}", client_id, e);
                     break;
                 }
