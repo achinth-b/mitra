@@ -3,10 +3,8 @@ mod helpers;
 use helpers::*;
 use mitra_backend::models::*;
 use mitra_backend::repositories::*;
-use mitra_backend::services::*;
 use rust_decimal::Decimal;
 use sqlx::PgPool;
-use uuid::Uuid;
 
 /// End-to-end integration test: Create group → Create event → Place bets → Settle
 #[sqlx::test]
@@ -56,7 +54,7 @@ async fn test_e2e_flow(pool: PgPool) {
         .expect("Failed to create event");
 
     // Step 5: Place bets
-    let bet1 = create_test_bet(
+    create_test_bet(
         &db,
         event.id,
         user1.id,
@@ -66,7 +64,7 @@ async fn test_e2e_flow(pool: PgPool) {
     )
     .await;
 
-    let bet2 = create_test_bet(
+    create_test_bet(
         &db,
         event.id,
         user2.id,
@@ -113,7 +111,7 @@ async fn test_e2e_flow(pool: PgPool) {
 
 /// Test WebSocket subscription flow
 #[sqlx::test]
-async fn test_websocket_subscriptions(pool: PgPool) {
+async fn test_websocket_subscriptions(_pool: PgPool) {
     // This would require WebSocket server setup
     // For now, test the subscription logic
     assert!(true);
@@ -138,7 +136,7 @@ async fn test_manual_settlement(pool: PgPool) {
 
 /// Test consensus voting
 #[sqlx::test]
-async fn test_consensus_voting(pool: PgPool) {
+async fn test_consensus_voting(_pool: PgPool) {
     // TODO: Implement consensus voting test
     assert!(true);
 }
@@ -184,4 +182,3 @@ async fn test_merkle_proof_generation(pool: PgPool) {
     assert_eq!(merkle_root.len(), 32);
     assert!(!proofs.is_empty());
 }
-

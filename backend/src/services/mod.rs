@@ -9,5 +9,4 @@ pub use ml_poller::MlPoller;
 pub use settlement::SettlementService;
 
 // Re-export SettlementType from models for convenience
-pub use crate::models::SettlementType;
 

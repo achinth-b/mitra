@@ -243,7 +243,6 @@ where
 {
     let db = TestDatabase::new().await;
     db.cleanup().await;
+    // Note: We don't cleanup after because test takes ownership of db
     test(db).await;
-    db.cleanup().await;
 }
-

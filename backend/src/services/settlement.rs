@@ -1,5 +1,5 @@
 use crate::error::{AppError, AppResult};
-use crate::models::{Event, EventStatus, SettlementType};
+use crate::models::{Event, EventStatus};
 use crate::repositories::{BetRepository, EventRepository, GroupMemberRepository};
 use crate::solana_client::SolanaClient;
 use crate::websocket::WebSocketServer;
@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{info, warn};
+use tracing::info;
 use uuid::Uuid;
 
 /// Vote for consensus settlement
@@ -251,7 +251,7 @@ impl SettlementService {
 
     /// Get user by wallet address
     async fn get_user_by_wallet(&self, wallet: &str) -> AppResult<crate::models::User> {
-        use crate::repositories::UserRepository;
+        
         let user_repo = crate::repositories::UserRepository::new(self.pool.clone());
         
         user_repo

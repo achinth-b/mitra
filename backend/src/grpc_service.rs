@@ -6,15 +6,14 @@
 use crate::amm::LmsrAmm;
 use crate::auth;
 use crate::error::{AppError, AppResult};
-use crate::models::{Event, EventStatus, SettlementType};
-use crate::repositories::*;
+use crate::models::EventStatus;
 use crate::state_manager::StateManager;
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tonic::{Request, Response, Status};
-use tracing::{error, info, warn};
+use tracing::{error, info};
 use uuid::Uuid;
 
 // Include the generated proto code

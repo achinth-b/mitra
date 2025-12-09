@@ -210,8 +210,8 @@ impl StateManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rust_decimal::Decimal;
-    use uuid::Uuid;
+    
+    
 
     #[test]
     fn test_hash_bet() {

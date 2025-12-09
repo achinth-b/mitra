@@ -5,7 +5,7 @@ use crate::solana_client::SolanaClient;
 use crate::state_manager::{MerkleProof, StateManager};
 use rust_decimal::Decimal;
 use std::sync::Arc;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 use uuid::Uuid;
 
 /// Emergency withdrawal service for trustless withdrawals when backend is down

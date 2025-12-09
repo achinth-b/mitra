@@ -4,20 +4,14 @@
 //! It handles transaction building, signing, and sending for all on-chain operations.
 
 use crate::error::{AppError, AppResult};
-use anchor_client::{
-    solana_sdk::{
+use anchor_client::solana_sdk::{
         commitment_config::CommitmentConfig,
         pubkey::Pubkey,
         signature::{Keypair, Signature, Signer},
-        system_program,
-    },
-    Client, Cluster,
-};
-use std::rc::Rc;
+    };
 use std::str::FromStr;
 use std::sync::Arc;
-use tokio::sync::RwLock;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 /// Configuration for Solana client
 #[derive(Clone, Debug)]

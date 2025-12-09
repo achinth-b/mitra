@@ -6,59 +6,23 @@
 //! - WebSocket server for real-time updates
 //! - Background tasks for merkle commitments and ML polling
 
-mod amm;
-mod auth;
-mod committer;
-mod config;
-mod database;
-mod error;
-mod grpc_service;
-mod models;
-mod repositories;
-mod services;
-mod solana_client;
-mod state_manager;
-mod websocket;
-
-use config::AppConfig;
-use database::{create_pool, run_migrations, Database};
-use error::{AppError, AppResult};
-use grpc_service::MitraGrpcService;
-use repositories::*;
-use services::{AuditTrailService, EmergencyWithdrawalService, MlPoller, SettlementService};
-use solana_client::{SolanaClient, SolanaConfig};
-use state_manager::StateManager;
+// Use the library crate
+use mitra_backend::config::AppConfig;
+use mitra_backend::database::{create_pool, run_migrations};
+use mitra_backend::error::{AppError, AppResult};
+use mitra_backend::grpc_service::{self, MitraGrpcService};
+use mitra_backend::repositories::*;
+use mitra_backend::services::{AuditTrailService, EmergencyWithdrawalService, MlPoller, SettlementService};
+use mitra_backend::solana_client::{SolanaClient, SolanaConfig};
+use mitra_backend::state_manager::StateManager;
+use mitra_backend::websocket::WebSocketServer;
+use mitra_backend::committer::Committer;
+use mitra_backend::AppState;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tokio::net::TcpListener;
 use tonic::transport::Server;
 use tracing::{error, info, warn};
-
-/// Application state containing all repositories and services
-pub struct AppState {
-    pub database: Database,
-    pub friend_group_repo: Arc<FriendGroupRepository>,
-    pub user_repo: Arc<UserRepository>,
-    pub group_member_repo: Arc<GroupMemberRepository>,
-    pub event_repo: Arc<EventRepository>,
-    pub bet_repo: Arc<BetRepository>,
-}
-
-impl AppState {
-    /// Create a new AppState with initialized repositories
-    pub fn new(pool: sqlx::PgPool) -> Self {
-        let database = Database::new(pool.clone());
-
-        Self {
-            database: database.clone(),
-            friend_group_repo: Arc::new(FriendGroupRepository::new(pool.clone())),
-            user_repo: Arc::new(UserRepository::new(pool.clone())),
-            group_member_repo: Arc::new(GroupMemberRepository::new(pool.clone())),
-            event_repo: Arc::new(EventRepository::new(pool.clone())),
-            bet_repo: Arc::new(BetRepository::new(pool)),
-        }
-    }
-}
 
 #[tokio::main]
 async fn main() -> AppResult<()> {
@@ -141,7 +105,7 @@ async fn main() -> AppResult<()> {
     info!("✓ State manager initialized");
 
     // Initialize WebSocket server
-    let ws_server = Arc::new(websocket::WebSocketServer::new());
+    let ws_server = Arc::new(WebSocketServer::new());
     info!("✓ WebSocket server initialized");
 
     // Initialize gRPC service
@@ -154,7 +118,7 @@ async fn main() -> AppResult<()> {
     info!("Starting background tasks...");
 
     // Initialize committer (background task for merkle root commitments)
-    let committer = committer::Committer::new(
+    let committer = Committer::new(
         state_manager.clone(),
         app_state.event_repo.clone(),
         solana_client.clone(),
@@ -335,6 +299,3 @@ async fn main() -> AppResult<()> {
     info!("Mitra backend service shutdown complete");
     Ok(())
 }
-
-// Re-export for use in tests
-pub use models::*;

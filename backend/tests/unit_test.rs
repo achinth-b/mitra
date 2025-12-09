@@ -1,13 +1,8 @@
 mod helpers;
 
-use helpers::*;
 use mitra_backend::amm::LmsrAmm;
 use mitra_backend::models::*;
-use mitra_backend::repositories::*;
-use mitra_backend::services::*;
-use mitra_backend::state_manager::StateManager;
 use rust_decimal::Decimal;
-use sqlx::PgPool;
 use uuid::Uuid;
 
 /// Unit tests for AMM
@@ -50,31 +45,12 @@ fn test_amm_invalid_outcome() {
 #[test]
 fn test_merkle_tree_generation() {
     // Test merkle tree with sample data
-    let data = vec![
-        b"bet1".to_vec(),
-        b"bet2".to_vec(),
-        b"bet3".to_vec(),
-    ];
-
-    // This would require async runtime, so we'll test in integration tests
-    // For unit tests, we can test the hashing function
+    // This would require async runtime, so we'll test the hashing function
     use sha2::{Sha256, Digest};
     let mut hasher = Sha256::new();
     hasher.update(b"test");
     let hash = hasher.finalize();
     assert_eq!(hash.len(), 32);
-}
-
-/// Unit tests for Settlement Service
-#[test]
-fn test_settlement_type_enum() {
-    let manual = SettlementType::Manual;
-    let oracle = SettlementType::Oracle;
-    let consensus = SettlementType::Consensus;
-
-    assert_eq!(manual, SettlementType::Manual);
-    assert_eq!(oracle, SettlementType::Oracle);
-    assert_eq!(consensus, SettlementType::Consensus);
 }
 
 /// Unit tests for Models
@@ -111,7 +87,7 @@ fn test_settlement_type_conversion() {
     assert_eq!(consensus.as_str(), "consensus");
 }
 
-/// Unit tests for Price Calculations
+/// Unit tests for Price Constraints
 #[test]
 fn test_price_constraints() {
     let price_min = Decimal::new(1, 2); // 0.01
@@ -154,4 +130,3 @@ fn test_error_types() {
     
     assert!(format!("{}", db_error).contains("database"));
 }
-

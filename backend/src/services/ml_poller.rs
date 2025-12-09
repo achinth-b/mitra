@@ -1,6 +1,5 @@
 use crate::amm::LmsrAmm;
-use crate::error::{AppError, AppResult};
-use crate::models::{Event, EventStatus};
+use crate::models::Event;
 use crate::repositories::{EventRepository, BetRepository};
 use crate::websocket::WebSocketServer;
 use rust_decimal::Decimal;

@@ -267,7 +267,7 @@ impl LmsrAmm {
         *new_shares.get_mut(outcome).unwrap() += shares_received;
 
         // Calculate new prices
-        let mut temp_amm = Self {
+        let temp_amm = Self {
             liquidity_parameter: self.liquidity_parameter,
             shares: new_shares,
             min_price: self.min_price,

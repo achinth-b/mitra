@@ -2,7 +2,6 @@ use crate::error::{AppError, AppResult};
 use solana_sdk::{
     pubkey::Pubkey,
     signature::Signature,
-    signer::Signer,
 };
 use std::str::FromStr;
 

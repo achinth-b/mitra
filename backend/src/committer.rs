@@ -142,7 +142,7 @@ impl Committer {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    
 
     #[test]
     fn test_committer_creation() {

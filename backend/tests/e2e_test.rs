@@ -3,10 +3,8 @@ mod helpers;
 use helpers::*;
 use mitra_backend::models::*;
 use mitra_backend::repositories::*;
-use mitra_backend::services::*;
 use rust_decimal::Decimal;
 use sqlx::PgPool;
-use uuid::Uuid;
 
 /// End-to-end test: Complete flow from group creation to settlement
 #[sqlx::test]
@@ -80,9 +78,8 @@ async fn test_complete_e2e_flow(pool: PgPool) {
         event.id,
         user1.id,
         "YES",
-        Decimal::new(100, 0), // 100 shares
+        Decimal::new(50, 0),  // 50 USDC amount
         Decimal::new(50, 2),  // 0.50 price
-        Decimal::new(50, 0), // 50 USDC
     )
     .await;
 
@@ -91,9 +88,8 @@ async fn test_complete_e2e_flow(pool: PgPool) {
         event.id,
         user2.id,
         "NO",
-        Decimal::new(100, 0), // 100 shares
+        Decimal::new(50, 0),  // 50 USDC amount
         Decimal::new(50, 2),  // 0.50 price
-        Decimal::new(50, 0), // 50 USDC
     )
     .await;
 
@@ -117,17 +113,20 @@ async fn test_complete_e2e_flow(pool: PgPool) {
 
     assert_eq!(total_volume, Decimal::new(100, 0)); // 50 + 50 = 100
 
-    // Step 8: Get volume by outcome
-    let yes_volume = db.bet_repo
-        .get_volume_by_outcome(event.id, "YES")
+    // Step 8: Get volume by outcome (returns Vec of tuples)
+    let volumes = db.bet_repo
+        .get_volume_by_outcome(event.id)
         .await
-        .expect("Failed to get YES volume")
+        .expect("Failed to get volumes by outcome");
+
+    let yes_volume = volumes.iter()
+        .find(|(o, _)| o == "YES")
+        .map(|(_, v)| *v)
         .unwrap_or(Decimal::ZERO);
 
-    let no_volume = db.bet_repo
-        .get_volume_by_outcome(event.id, "NO")
-        .await
-        .expect("Failed to get NO volume")
+    let no_volume = volumes.iter()
+        .find(|(o, _)| o == "NO")
+        .map(|(_, v)| *v)
         .unwrap_or(Decimal::ZERO);
 
     assert_eq!(yes_volume, Decimal::new(50, 0));
@@ -160,14 +159,11 @@ async fn test_multiple_events_in_group(pool: PgPool) {
     let fixtures = TestFixtures::create(&db).await;
 
     // Create second event
-    let outcomes2 = serde_json::json!(["WIN", "LOSE"]);
     let event2 = create_test_event(
         &db,
         fixtures.friend_group.id,
         "Second Event",
-        None,
-        &outcomes2,
-        SettlementType::Manual,
+        vec!["WIN", "LOSE"],
     )
     .await;
 
@@ -178,6 +174,7 @@ async fn test_multiple_events_in_group(pool: PgPool) {
         .expect("Failed to find events");
 
     assert_eq!(events.len(), 2);
+    assert!(events.iter().any(|e| e.id == event2.id));
 }
 
 /// E2E test: User places multiple bets
@@ -189,25 +186,23 @@ async fn test_user_multiple_bets(pool: PgPool) {
     let fixtures = TestFixtures::create(&db).await;
 
     // User1 places multiple bets
-    let bet1 = create_test_bet(
+    create_test_bet(
         &db,
         fixtures.event.id,
         fixtures.user1.id,
         "Yes",
-        Decimal::new(50, 0),
-        Decimal::new(50, 2),
-        Decimal::new(25, 0),
+        Decimal::new(25, 0),  // 25 USDC
+        Decimal::new(50, 2),  // 0.50 price
     )
     .await;
 
-    let bet2 = create_test_bet(
+    create_test_bet(
         &db,
         fixtures.event.id,
         fixtures.user1.id,
         "Yes",
-        Decimal::new(30, 0),
-        Decimal::new(55, 2),
-        Decimal::new(16, 5),
+        Decimal::new(16, 0),  // 16 USDC
+        Decimal::new(55, 2),  // 0.55 price
     )
     .await;
 
@@ -283,4 +278,3 @@ async fn test_event_cancellation(pool: PgPool) {
 
     assert!(!active_events.iter().any(|e| e.id == fixtures.event.id));
 }
-

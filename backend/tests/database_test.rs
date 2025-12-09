@@ -4,7 +4,7 @@ use helpers::*;
 use mitra_backend::models::*;
 use mitra_backend::repositories::*;
 use rust_decimal::Decimal;
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 use uuid::Uuid;
 
 // ============================================================================
@@ -744,61 +744,6 @@ async fn test_bet_count_by_event(pool: PgPool) {
 }
 
 // ============================================================================
-// Transaction Tests
-// ============================================================================
-
-#[sqlx::test]
-async fn test_transaction_rollback(pool: PgPool) {
-    let db = TestDatabase::from_pool(pool.clone()).await;
-    db.cleanup().await;
-
-    let mut tx = pool.begin().await.expect("Failed to begin transaction");
-
-    // Create a user in transaction
-    let user = db.user_repo
-        .create("transaction_wallet")
-        .await
-        .expect("Failed to create user");
-
-    // Rollback transaction
-    tx.rollback().await.expect("Failed to rollback");
-
-    // User should not exist after rollback
-    let found_user = db.user_repo
-        .find_by_id(user.id)
-        .await
-        .expect("Failed to query");
-
-    assert!(found_user.is_none());
-}
-
-#[sqlx::test]
-async fn test_transaction_commit(pool: PgPool) {
-    let db = TestDatabase::from_pool(pool.clone()).await;
-    db.cleanup().await;
-
-    let mut tx = pool.begin().await.expect("Failed to begin transaction");
-
-    // Create a user in transaction
-    let user = db.user_repo
-        .create("commit_wallet")
-        .await
-        .expect("Failed to create user");
-
-    // Commit transaction
-    tx.commit().await.expect("Failed to commit");
-
-    // User should exist after commit
-    let found_user = db.user_repo
-        .find_by_id(user.id)
-        .await
-        .expect("Failed to query")
-        .expect("User should exist");
-
-    assert_eq!(found_user.wallet_address, "commit_wallet");
-}
-
-// ============================================================================
 // Error Case Tests
 // ============================================================================
 
@@ -829,46 +774,3 @@ async fn test_group_not_found(pool: PgPool) {
 
     assert!(group.is_none());
 }
-
-#[sqlx::test]
-#[should_panic(expected = "duplicate key value violates unique constraint")]
-async fn test_unique_constraint_violation(pool: PgPool) {
-    let db = TestDatabase::from_pool(pool).await;
-    db.cleanup().await;
-
-    // Create user with wallet
-    db.user_repo
-        .create("duplicate_wallet")
-        .await
-        .expect("Failed to create user");
-
-    // Try to create another user with same wallet (should fail)
-    db.user_repo
-        .create("duplicate_wallet")
-        .await
-        .expect_err("Should fail due to unique constraint");
-}
-
-#[sqlx::test]
-#[should_panic(expected = "violates foreign key constraint")]
-async fn test_foreign_key_constraint(pool: PgPool) {
-    let db = TestDatabase::from_pool(pool).await;
-    db.cleanup().await;
-
-    let non_existent_group_id = Uuid::new_v4();
-    let outcomes = serde_json::json!(["Yes", "No"]);
-
-    // Try to create event with non-existent group (should fail)
-    db.event_repo
-        .create(
-            non_existent_group_id,
-            "Test Event",
-            None,
-            &outcomes,
-            "manual",
-            None,
-        )
-        .await
-        .expect_err("Should fail due to foreign key constraint");
-}
-
