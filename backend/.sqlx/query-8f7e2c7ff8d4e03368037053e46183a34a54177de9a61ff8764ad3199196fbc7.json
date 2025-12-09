@@ -1,0 +1,62 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT \n                id, \n                event_id, \n                user_id, \n                outcome, \n                shares, \n                price, \n                amount_usdc, \n                timestamp\n            FROM bets\n            ORDER BY timestamp DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "event_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "outcome",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "shares",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "price",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 6,
+        "name": "amount_usdc",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 7,
+        "name": "timestamp",
+        "type_info": "Timestamp"
+      }
+    ],
+    "parameters": {
+      "Left": []
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "8f7e2c7ff8d4e03368037053e46183a34a54177de9a61ff8764ad3199196fbc7"
+}

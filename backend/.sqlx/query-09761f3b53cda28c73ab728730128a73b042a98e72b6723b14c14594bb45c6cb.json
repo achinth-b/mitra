@@ -1,0 +1,76 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT \n                id, \n                group_id, \n                solana_pubkey, \n                title, \n                description, \n                outcomes as \"outcomes: serde_json::Value\",\n                settlement_type, \n                status, \n                resolve_by, \n                created_at\n            FROM events\n            WHERE group_id = $1\n            ORDER BY created_at DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "group_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "solana_pubkey",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "title",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "description",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 5,
+        "name": "outcomes: serde_json::Value",
+        "type_info": "Jsonb"
+      },
+      {
+        "ordinal": 6,
+        "name": "settlement_type",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 7,
+        "name": "status",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 8,
+        "name": "resolve_by",
+        "type_info": "Timestamp"
+      },
+      {
+        "ordinal": 9,
+        "name": "created_at",
+        "type_info": "Timestamp"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "09761f3b53cda28c73ab728730128a73b042a98e72b6723b14c14594bb45c6cb"
+}

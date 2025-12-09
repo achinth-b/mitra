@@ -7,7 +7,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Users table
 -- Stores user information indexed by wallet address
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     wallet_address TEXT UNIQUE NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
@@ -15,7 +15,7 @@ CREATE TABLE users (
 
 -- Friend Groups table
 -- Stores friend group information with Solana on-chain pubkey
-CREATE TABLE friend_groups (
+CREATE TABLE IF NOT EXISTS friend_groups (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     solana_pubkey TEXT UNIQUE NOT NULL,
     name TEXT NOT NULL CHECK (LENGTH(name) > 0 AND LENGTH(name) <= 50),
@@ -25,7 +25,7 @@ CREATE TABLE friend_groups (
 
 -- Group Members table
 -- Junction table linking users to friend groups with roles
-CREATE TABLE group_members (
+CREATE TABLE IF NOT EXISTS group_members (
     group_id UUID NOT NULL REFERENCES friend_groups(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     role TEXT NOT NULL CHECK (role IN ('admin', 'member')),
@@ -35,7 +35,7 @@ CREATE TABLE group_members (
 
 -- Events table
 -- Stores prediction market events
-CREATE TABLE events (
+CREATE TABLE IF NOT EXISTS events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     group_id UUID NOT NULL REFERENCES friend_groups(id) ON DELETE CASCADE,
     solana_pubkey TEXT UNIQUE, -- Nullable until on-chain creation
@@ -51,7 +51,7 @@ CREATE TABLE events (
 -- Bets table
 -- Stores individual bets placed on events
 -- Note: committed_slot and merkle_proof deferred for Phase 7 (merkle commitments)
-CREATE TABLE bets (
+CREATE TABLE IF NOT EXISTS bets (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -63,17 +63,6 @@ CREATE TABLE bets (
     -- committed_slot BIGINT, -- To be added in Phase 7 migration
     -- merkle_proof JSONB -- To be added in Phase 7 migration
 );
-
--- Price Snapshots table
--- Deferred for MVP - will be added later for historical price tracking
--- CREATE TABLE price_snapshots (
---     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
---     event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
---     outcome TEXT NOT NULL,
---     price DECIMAL(5, 4) NOT NULL CHECK (price >= 0.01 AND price <= 0.99),
---     liquidity DECIMAL(20, 8) NOT NULL CHECK (liquidity >= 0),
---     timestamp TIMESTAMP NOT NULL DEFAULT NOW()
--- );
 
 -- Add comments for documentation
 COMMENT ON TABLE users IS 'Stores user accounts indexed by Solana wallet address';

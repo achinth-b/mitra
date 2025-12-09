@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use crate::errors::*;
 
-pub fn handler(ctx: Context<crate::friend_groups::CreateGroup>, name: String) -> Result<()> {
+pub fn handler(ctx: Context<crate::CreateGroup>, name: String) -> Result<()> {
     require!(name.len() <= 50, FriendGroupError::NameTooLong);
     
     // Validate treasury_usdc is owned by the friend_group PDA

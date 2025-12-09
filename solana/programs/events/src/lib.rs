@@ -227,7 +227,8 @@ pub mod events {
         )]
         pub user_usdc_account: Account<'info, TokenAccount>,
         
-        /// Member account verifying user is a group member
+        /// CHECK: Member account verifying user is a group member.
+        /// Validated by seeds constraint and data_len check to ensure account exists.
         #[account(
             seeds = [b"member", group.key().as_ref(), user.key().as_ref()],
             bump,

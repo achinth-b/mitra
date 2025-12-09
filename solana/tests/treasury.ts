@@ -1,5 +1,5 @@
 import * as anchor from "@coral-xyz/anchor";
-import { Program, AnchorError } from "@coral-xyz/anchor";
+import { Program } from "@coral-xyz/anchor";
 import { Treasury } from "../target/types/treasury";
 import { FriendGroups } from "../target/types/friend_groups";
 import { LAMPORTS_PER_SOL, PublicKey, Keypair, Transaction } from "@solana/web3.js";

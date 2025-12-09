@@ -3,7 +3,7 @@ use anchor_spl::token::{self, Transfer};
 use crate::errors::*;
 
 pub fn handler(
-    ctx: Context<crate::friend_groups::TreasuryTransfer>,
+    ctx: Context<crate::TreasuryTransfer>,
     sol_amount: u64,
     usdc_amount: u64,
 ) -> Result<()> {

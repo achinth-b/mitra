@@ -3,7 +3,7 @@ use anchor_lang::system_program;
 use anchor_spl::token::{self, Transfer};
 use crate::errors::*;
 
-pub fn handler(ctx: Context<crate::friend_groups::DepositFunds>, amount_sol: u64, amount_usdc: u64) -> Result<()> {
+pub fn handler(ctx: Context<crate::DepositFunds>, amount_sol: u64, amount_usdc: u64) -> Result<()> {
     // Validate at least one amount > 0 (fail fast)
     require!(
         amount_sol > 0 || amount_usdc > 0,

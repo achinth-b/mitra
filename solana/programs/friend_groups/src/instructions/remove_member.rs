@@ -3,7 +3,7 @@ use anchor_spl::token::{self, Transfer};
 use crate::errors::*;
 use crate::state::{FriendGroup, MemberRole};
 
-pub fn handler(ctx: Context<crate::friend_groups::RemoveMember>) -> Result<()> {
+pub fn handler(ctx: Context<crate::RemoveMember>) -> Result<()> {
     // Get AccountInfo references and values before mutable borrow
     let friend_group_account_info = ctx.accounts.friend_group.to_account_info();
     let friend_group_admin = ctx.accounts.friend_group.admin;

@@ -23,7 +23,7 @@ pub mod proto {
     include!(concat!(env!("OUT_DIR"), "/mitra.rs"));
 }
 
-use proto::mitra_service_server::MitraServiceServer;
+use proto::mitra_service_server::{MitraService, MitraServiceServer};
 use proto::{
     CreateGroupRequest, GroupResponse, InviteMemberRequest, MemberResponse,
     CreateEventRequest, EventResponse, PlaceBetRequest, BetResponse,
@@ -76,7 +76,7 @@ impl MitraGrpcService {
 }
 
 #[tonic::async_trait]
-impl proto::MitraService for MitraGrpcService {
+impl MitraService for MitraGrpcService {
     /// Create a friend group
     async fn create_friend_group(
         &self,
@@ -538,16 +538,16 @@ impl proto::MitraService for MitraGrpcService {
     }
 }
 
-// Legacy compatibility: Keep the old MitraService struct for business logic
+// Legacy compatibility: Keep the old MitraBusinessService struct for business logic
 // This can be used by other parts of the system that don't go through gRPC
 
 /// Business logic service (non-gRPC interface)
-pub struct MitraService {
+pub struct MitraBusinessService {
     app_state: Arc<crate::AppState>,
     state_manager: Arc<StateManager>,
 }
 
-impl MitraService {
+impl MitraBusinessService {
     /// Create a new service
     pub fn new(app_state: Arc<crate::AppState>, state_manager: Arc<StateManager>) -> Self {
         Self {

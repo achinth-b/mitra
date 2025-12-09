@@ -1,0 +1,28 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT outcome, COALESCE(SUM(amount_usdc), 0) as volume\n            FROM bets\n            WHERE event_id = $1\n            GROUP BY outcome\n            ORDER BY volume DESC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "outcome",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 1,
+        "name": "volume",
+        "type_info": "Numeric"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      null
+    ]
+  },
+  "hash": "cc3d1d606c7846f9630abd2325568cc76c317564e7ebdb832e6d678f0ba4a22d"
+}

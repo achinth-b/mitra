@@ -1,0 +1,40 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            SELECT group_id, user_id, role, joined_at\n            FROM group_members\n            WHERE group_id = $1\n            ORDER BY joined_at ASC\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "group_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "role",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "joined_at",
+        "type_info": "Timestamp"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "4385c0814b9bf5f1d92260a7f17b4258d8c85a73eafa21088f95f3beaff1fb07"
+}

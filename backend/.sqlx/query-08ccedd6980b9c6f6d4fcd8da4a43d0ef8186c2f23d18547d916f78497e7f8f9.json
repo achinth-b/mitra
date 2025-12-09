@@ -1,0 +1,42 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO group_members (group_id, user_id, role)\n            VALUES ($1, $2, $3)\n            ON CONFLICT (group_id, user_id) DO UPDATE\n            SET role = EXCLUDED.role\n            RETURNING group_id, user_id, role, joined_at\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "group_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "role",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 3,
+        "name": "joined_at",
+        "type_info": "Timestamp"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "08ccedd6980b9c6f6d4fcd8da4a43d0ef8186c2f23d18547d916f78497e7f8f9"
+}

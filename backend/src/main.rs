@@ -229,9 +229,14 @@ async fn main() -> AppResult<()> {
 
     info!("Starting gRPC server on {}...", grpc_addr);
 
+    // Use serve_with_shutdown for graceful shutdown support
+    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
+    
     let grpc_server = Server::builder()
         .add_service(grpc_service.into_server())
-        .serve(grpc_addr);
+        .serve_with_shutdown(grpc_addr, async {
+            shutdown_rx.await.ok();
+        });
 
     let grpc_handle = tokio::spawn(async move {
         if let Err(e) = grpc_server.await {
@@ -239,6 +244,9 @@ async fn main() -> AppResult<()> {
         }
     });
 
+    // Give the server a moment to bind
+    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    
     info!("✓ gRPC server started on {}", grpc_addr);
 
     // Start WebSocket server (if HTTP port is configured)
@@ -297,29 +305,24 @@ async fn main() -> AppResult<()> {
     // =========================================================================
     // SHUTDOWN HANDLING
     // =========================================================================
-    tokio::select! {
-        _ = tokio::signal::ctrl_c() => {
-            info!("Shutdown signal received, shutting down gracefully...");
-        }
-        _ = grpc_handle => {
-            error!("gRPC server exited unexpectedly");
-        }
-        _ = committer_handle => {
-            error!("Committer task exited unexpectedly");
-        }
-        _ = ml_poller_handle => {
-            error!("ML poller task exited unexpectedly");
-        }
-        _ = async {
-            if let Some(handle) = ws_handle {
-                handle.await.ok();
-            } else {
-                // Never completes if WebSocket is not running
-                futures::future::pending::<()>().await;
-            }
-        } => {
-            error!("WebSocket server exited unexpectedly");
-        }
+    
+    // Wait for shutdown signal
+    tokio::signal::ctrl_c().await.ok();
+    info!("Shutdown signal received, shutting down gracefully...");
+    
+    // Signal gRPC server to shutdown
+    let _ = shutdown_tx.send(());
+    
+    // Wait for gRPC server to finish
+    let _ = grpc_handle.await;
+    
+    // Abort background tasks
+    committer_handle.abort();
+    ml_poller_handle.abort();
+    
+    // Abort WebSocket if running
+    if let Some(handle) = ws_handle {
+        handle.abort();
     }
 
     info!("Mitra backend service shutdown complete");

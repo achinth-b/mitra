@@ -112,7 +112,7 @@ impl GroupMemberRepository {
     pub async fn is_member(&self, group_id: Uuid, user_id: Uuid) -> SqlxResult<bool> {
         let result = sqlx::query!(
             r#"
-            SELECT 1
+            SELECT 1 as exists
             FROM group_members
             WHERE group_id = $1 AND user_id = $2
             LIMIT 1

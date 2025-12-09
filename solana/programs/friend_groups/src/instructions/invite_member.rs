@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use crate::errors::*;
 use crate::state::{FriendGroup, Invite};
 
-pub fn handler(ctx: Context<crate::friend_groups::InviteMember>) -> Result<()> {
+pub fn handler(ctx: Context<crate::InviteMember>) -> Result<()> {
     let friend_group = &ctx.accounts.friend_group;
     let clock = Clock::get()?;
     

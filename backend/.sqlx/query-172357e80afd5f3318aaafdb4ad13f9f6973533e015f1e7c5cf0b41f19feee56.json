@@ -1,0 +1,69 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO bets (event_id, user_id, outcome, shares, price, amount_usdc)\n            VALUES ($1, $2, $3, $4, $5, $6)\n            RETURNING \n                id, \n                event_id, \n                user_id, \n                outcome, \n                shares, \n                price, \n                amount_usdc, \n                timestamp\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "event_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 3,
+        "name": "outcome",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
+        "name": "shares",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 5,
+        "name": "price",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 6,
+        "name": "amount_usdc",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 7,
+        "name": "timestamp",
+        "type_info": "Timestamp"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Text",
+        "Numeric",
+        "Numeric",
+        "Numeric"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "172357e80afd5f3318aaafdb4ad13f9f6973533e015f1e7c5cf0b41f19feee56"
+}
