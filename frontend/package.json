@@ -1,0 +1,40 @@
+{
+  "name": "frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@magic-ext/oauth2": "^14.0.0",
+    "@magic-ext/solana": "^29.0.0",
+    "@magic-sdk/admin": "^2.8.2",
+    "@solana/web3.js": "^1.98.4",
+    "@tanstack/react-query": "^5.90.12",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "framer-motion": "^12.23.25",
+    "google-protobuf": "^4.0.1",
+    "grpc-web": "^2.0.2",
+    "lucide-react": "^0.556.0",
+    "magic-sdk": "^32.0.0",
+    "next": "16.0.8",
+    "react": "19.2.1",
+    "react-dom": "19.2.1",
+    "tailwind-merge": "^3.4.0",
+    "zustand": "^5.0.9"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.0.8",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

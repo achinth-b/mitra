@@ -1,0 +1,238 @@
+'use client';
+
+import { Magic } from 'magic-sdk';
+import { SolanaExtension } from '@magic-ext/solana';
+
+// Magic instance (client-side only)
+let magic: Magic | null = null;
+
+/**
+ * Get the Magic SDK instance (client-side only)
+ * 
+ * Magic.link handles:
+ * - Passwordless email authentication
+ * - Automatic Solana wallet creation per user
+ * - Wallet signing for transactions
+ */
+export function getMagic(): Magic {
+  if (typeof window === 'undefined') {
+    throw new Error('Magic can only be used on the client');
+  }
+
+  if (!magic) {
+    const publishableKey = process.env.NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY;
+    
+    if (!publishableKey || publishableKey.includes('YOUR_KEY_HERE')) {
+      console.warn('Magic.link key not configured - using mock for development');
+      magic = createMockMagic();
+      return magic;
+    }
+
+    if (!publishableKey.startsWith('pk_')) {
+      console.error('Invalid Magic key. Use your publishable key (pk_test_xxx or pk_live_xxx)');
+      magic = createMockMagic();
+      return magic;
+    }
+
+    magic = new Magic(publishableKey, {
+      extensions: [
+        new SolanaExtension({
+          rpcUrl: process.env.NEXT_PUBLIC_SOLANA_RPC || 'https://api.devnet.solana.com',
+        }),
+      ],
+    });
+  }
+
+  return magic;
+}
+
+// ===========================================
+// Authentication
+// ===========================================
+
+/**
+ * Login with email - sends a magic link
+ * On success, a Solana wallet is automatically created/retrieved
+ */
+export async function loginWithEmail(email: string): Promise<string | null> {
+  try {
+    const m = getMagic();
+    const didToken = await m.auth.loginWithMagicLink({ email });
+    return didToken;
+  } catch (error) {
+    console.error('Login error:', error);
+    return null;
+  }
+}
+
+/**
+ * Logout and clear session
+ */
+export async function logout(): Promise<void> {
+  try {
+    const m = getMagic();
+    await m.user.logout();
+    localStorage.removeItem('mock_user');
+  } catch (error) {
+    console.error('Logout error:', error);
+  }
+}
+
+/**
+ * Get current user metadata including Solana wallet
+ */
+export async function getUser() {
+  try {
+    const m = getMagic();
+    
+    // Check if user is logged in
+    const isLoggedIn = await m.user.isLoggedIn();
+    if (!isLoggedIn) return null;
+    
+    // Get metadata - handle both real Magic and mock
+    if (typeof m.user.getMetadata === 'function') {
+      const metadata = await m.user.getMetadata();
+      return metadata;
+    }
+    
+    // Fallback for mock
+    const stored = localStorage.getItem('mock_user');
+    return stored ? JSON.parse(stored) : null;
+  } catch (error) {
+    console.error('Get user error:', error);
+    // Try localStorage fallback
+    const stored = localStorage.getItem('mock_user');
+    return stored ? JSON.parse(stored) : null;
+  }
+}
+
+/**
+ * Get user's Solana wallet address
+ */
+export async function getWalletAddress(): Promise<string | null> {
+  try {
+    const user = await getUser();
+    return user?.publicAddress || null;
+  } catch (error) {
+    console.error('Get wallet error:', error);
+    return null;
+  }
+}
+
+// ===========================================
+// Solana Wallet Operations
+// ===========================================
+
+/**
+ * Sign a message with the user's Solana wallet
+ * Used for authenticating bets and off-chain operations
+ */
+export async function signMessage(message: string): Promise<string> {
+  try {
+    const m = getMagic();
+    const solana = (m as any).solana;
+    
+    if (!solana) {
+      console.warn('Solana extension not available');
+      return 'dev_sig_' + Date.now();
+    }
+
+    const encoded = new TextEncoder().encode(message);
+    const signed = await solana.signMessage(encoded);
+    return Buffer.from(signed).toString('base64');
+  } catch (error) {
+    console.error('Sign error:', error);
+    return 'dev_sig_' + Date.now();
+  }
+}
+
+/**
+ * Sign a Solana transaction
+ */
+export async function signTransaction(transaction: unknown): Promise<unknown> {
+  try {
+    const m = getMagic();
+    const solana = (m as any).solana;
+    
+    if (!solana) {
+      throw new Error('Solana extension not available');
+    }
+
+    return await solana.signTransaction(transaction);
+  } catch (error) {
+    console.error('Sign transaction error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Sign and send a Solana transaction
+ */
+export async function signAndSendTransaction(transaction: unknown): Promise<string | null> {
+  try {
+    const m = getMagic();
+    const solana = (m as any).solana;
+    
+    if (!solana) {
+      throw new Error('Solana extension not available');
+    }
+
+    return await solana.signAndSendTransaction(transaction);
+  } catch (error) {
+    console.error('Send transaction error:', error);
+    return null;
+  }
+}
+
+// ===========================================
+// Development Mock
+// ===========================================
+
+function createMockMagic(): Magic {
+  console.log('🔧 Using mock Magic.link for development');
+  
+  const mockMagic = {
+    user: {
+      isLoggedIn: async (): Promise<boolean> => {
+        return !!localStorage.getItem('mock_user');
+      },
+      getMetadata: async () => {
+        const stored = localStorage.getItem('mock_user');
+        return stored ? JSON.parse(stored) : null;
+      },
+      logout: async (): Promise<boolean> => {
+        localStorage.removeItem('mock_user');
+        return true;
+      },
+      getIdToken: async () => 'mock_id_token',
+    },
+    auth: {
+      loginWithMagicLink: async ({ email }: { email: string }): Promise<string | null> => {
+        // Simulate login delay
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        // Generate deterministic wallet from email
+        const walletSeed = email.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+        const mockWallet = `Dev${walletSeed.toString(36)}${Math.random().toString(36).substring(2, 8)}`;
+        
+        const userData = {
+          email,
+          publicAddress: mockWallet,
+          issuer: `did:ethr:${mockWallet}`,
+        };
+        
+        localStorage.setItem('mock_user', JSON.stringify(userData));
+        console.log('✅ Mock login:', email, '→', mockWallet);
+        
+        return 'mock_did_token';
+      },
+    },
+    solana: {
+      signMessage: async () => new Uint8Array(64).fill(1),
+      signTransaction: async (tx: unknown) => tx,
+      signAndSendTransaction: async () => 'mock_tx_' + Date.now(),
+    },
+  };
+  
+  return mockMagic as unknown as Magic;
+}

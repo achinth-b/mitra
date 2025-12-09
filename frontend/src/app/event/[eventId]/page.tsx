@@ -1,0 +1,347 @@
+'use client';
+
+import { useEffect, useState, useCallback } from 'react';
+import { useRouter, useParams } from 'next/navigation';
+import { useAuthStore } from '@/store/auth';
+import { getEvent, getEventPrices, placeBet, getUserBets, settleEvent } from '@/lib/api';
+import { signMessage } from '@/lib/magic';
+import type { Event, Prices, Bet } from '@/types';
+
+export default function EventPage() {
+  const router = useRouter();
+  const params = useParams();
+  const eventId = params.eventId as string;
+  
+  const { user, checkAuth, isLoading: authLoading } = useAuthStore();
+  const [event, setEvent] = useState<Event | null>(null);
+  const [prices, setPrices] = useState<Prices | null>(null);
+  const [userBets, setUserBets] = useState<Bet[]>([]);
+  
+  // Betting state
+  const [selectedOutcome, setSelectedOutcome] = useState<string | null>(null);
+  const [amount, setAmount] = useState('');
+  const [isPlacing, setIsPlacing] = useState(false);
+  const [lastBet, setLastBet] = useState<{ shares: number; price: number } | null>(null);
+  
+  // Settlement state
+  const [showSettle, setShowSettle] = useState(false);
+  const [settleOutcome, setSettleOutcome] = useState<string | null>(null);
+  const [isSettling, setIsSettling] = useState(false);
+
+  useEffect(() => {
+    checkAuth();
+  }, [checkAuth]);
+
+  useEffect(() => {
+    if (!user.isLoggedIn && !authLoading) {
+      router.push('/');
+    }
+  }, [user.isLoggedIn, authLoading, router]);
+
+  // Load event
+  useEffect(() => {
+    getEvent(eventId).then(setEvent);
+  }, [eventId]);
+
+  // Load user's bets
+  useEffect(() => {
+    if (user.walletAddress) {
+      setUserBets(getUserBets(eventId, user.walletAddress));
+    }
+  }, [eventId, user.walletAddress]);
+
+  // Fetch prices
+  const fetchPrices = useCallback(async () => {
+    const p = await getEventPrices(eventId);
+    setPrices(p);
+  }, [eventId]);
+
+  useEffect(() => {
+    fetchPrices();
+    const interval = setInterval(fetchPrices, 5000);
+    return () => clearInterval(interval);
+  }, [fetchPrices]);
+
+  const handlePlaceBet = async () => {
+    if (!selectedOutcome || !amount || !user.walletAddress || !event) return;
+    
+    const amountNum = parseFloat(amount);
+    if (isNaN(amountNum) || amountNum <= 0) return;
+
+    setIsPlacing(true);
+    setLastBet(null);
+
+    try {
+      // Sign the bet
+      const sig = await signMessage(`bet:${eventId}:${selectedOutcome}:${amountNum}`);
+      
+      const result = await placeBet(
+        eventId,
+        user.walletAddress,
+        selectedOutcome,
+        amountNum,
+        sig
+      );
+
+      setLastBet({ shares: result.shares, price: result.price });
+      setPrices(result.updatedPrices);
+      setUserBets(getUserBets(eventId, user.walletAddress));
+      
+      // Reset form
+      setSelectedOutcome(null);
+      setAmount('');
+    } catch (err) {
+      console.error('Bet failed:', err);
+    } finally {
+      setIsPlacing(false);
+    }
+  };
+
+  const handleSettle = async () => {
+    if (!settleOutcome || !user.walletAddress || !event) return;
+
+    setIsSettling(true);
+
+    try {
+      const sig = await signMessage(`settle:${eventId}:${settleOutcome}`);
+      await settleEvent(eventId, settleOutcome, user.walletAddress, sig);
+      
+      // Refresh event
+      const updated = await getEvent(eventId);
+      if (updated) setEvent(updated);
+      
+      setShowSettle(false);
+      setSettleOutcome(null);
+    } catch (err) {
+      console.error('Settlement failed:', err);
+    } finally {
+      setIsSettling(false);
+    }
+  };
+
+  const formatPrice = (price: number) => `${Math.round(price * 100)}%`;
+  const formatUsd = (val: number) => `$${val.toFixed(2)}`;
+
+  // Calculate user's position
+  const userPosition = userBets.reduce((acc, bet) => {
+    acc[bet.outcome] = (acc[bet.outcome] || 0) + bet.shares;
+    return acc;
+  }, {} as Record<string, number>);
+
+  const totalInvested = userBets.reduce((sum, b) => sum + b.amountUsdc, 0);
+
+  if (authLoading || !event) {
+    return (
+      <main className="min-h-screen flex items-center justify-center">
+        <p className="text-2xl text-white/40 italic">loading...</p>
+      </main>
+    );
+  }
+
+  const isActive = event.status === 'active';
+
+  return (
+    <main className="min-h-screen px-8 py-16 md:py-24">
+      <div className="max-w-3xl mx-auto">
+        {/* Header */}
+        <header className="mb-16">
+          <button
+            onClick={() => router.back()}
+            className="text-xl text-white/40 hover:text-white transition-opacity mb-10 block"
+          >
+            ← back
+          </button>
+          <h1 className="text-3xl md:text-5xl leading-tight mb-6">{event.title}</h1>
+          
+          {isActive && prices && (
+            <p className="text-lg text-white/40">
+              {formatUsd(prices.totalVolume)} total volume
+            </p>
+          )}
+          
+          {event.status === 'resolved' && (
+            <p className="text-xl text-white/60">
+              resolved: <span className="italic">{event.winningOutcome}</span>
+            </p>
+          )}
+        </header>
+
+        {/* Current Odds */}
+        {isActive && prices && (
+          <section className="mb-16">
+            <h2 className="text-xl text-white/40 mb-8">current odds</h2>
+            <div className="flex gap-16">
+              {event.outcomes.map((outcome) => {
+                const price = prices.prices[outcome] || 0.5;
+                const isSelected = selectedOutcome === outcome;
+                
+                return (
+                  <button
+                    key={outcome}
+                    onClick={() => setSelectedOutcome(isSelected ? null : outcome)}
+                    className={`text-left transition-all ${isSelected ? '' : 'opacity-60 hover:opacity-100'}`}
+                  >
+                    <p className="text-5xl md:text-6xl mb-2">{formatPrice(price)}</p>
+                    <p className="text-xl">{outcome}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* Place Bet */}
+        {isActive && selectedOutcome && (
+          <section className="mb-16 pb-16 border-b border-white/10">
+            <h2 className="text-xl text-white/40 mb-6">
+              bet on <span className="text-white">{selectedOutcome}</span>
+            </h2>
+            
+            <div className="mb-6">
+              <input
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="amount (USDC)"
+                className="w-full text-3xl py-4 border-b border-white/30 focus:border-white/70 transition-colors bg-transparent"
+                autoFocus
+              />
+            </div>
+            
+            {/* Quick amounts */}
+            <div className="flex gap-6 mb-8">
+              {[10, 25, 50, 100].map((quick) => (
+                <button
+                  key={quick}
+                  onClick={() => setAmount(quick.toString())}
+                  className="text-lg text-white/40 hover:text-white transition-opacity"
+                >
+                  ${quick}
+                </button>
+              ))}
+            </div>
+            
+            {/* Potential payout */}
+            {amount && parseFloat(amount) > 0 && prices && (
+              <p className="text-lg text-white/60 mb-8">
+                if {selectedOutcome} wins, you get{' '}
+                <span className="text-white text-xl">
+                  {formatUsd(parseFloat(amount) / (prices.prices[selectedOutcome] || 0.5))}
+                </span>
+              </p>
+            )}
+            
+            <button
+              onClick={handlePlaceBet}
+              disabled={!amount || parseFloat(amount) <= 0 || isPlacing}
+              className="text-2xl italic text-white/60 hover:text-white transition-opacity disabled:text-white/30"
+            >
+              {isPlacing ? 'placing bet...' : 'place bet →'}
+            </button>
+          </section>
+        )}
+
+        {/* Last Bet Confirmation */}
+        {lastBet && (
+          <section className="mb-16 p-6 border border-white/20">
+            <p className="text-xl text-white/60 mb-2">bet placed!</p>
+            <p className="text-lg">
+              {lastBet.shares.toFixed(2)} shares at {formatPrice(lastBet.price)}
+            </p>
+          </section>
+        )}
+
+        {/* Your Position */}
+        {userBets.length > 0 && (
+          <section className="mb-16">
+            <h2 className="text-xl text-white/40 mb-6">your position</h2>
+            
+            <div className="space-y-4 mb-6">
+              {Object.entries(userPosition).map(([outcome, shares]) => (
+                <div key={outcome} className="flex justify-between text-lg">
+                  <span>{outcome}</span>
+                  <span>{shares.toFixed(2)} shares</span>
+                </div>
+              ))}
+            </div>
+            
+            <p className="text-white/40">
+              total invested: {formatUsd(totalInvested)}
+            </p>
+            
+            {event.status === 'resolved' && event.winningOutcome && (
+              <div className="mt-6 p-4 border border-white/20">
+                <p className="text-lg">
+                  {userPosition[event.winningOutcome] > 0 ? (
+                    <>
+                      you won{' '}
+                      <span className="text-white text-xl">
+                        {formatUsd(userPosition[event.winningOutcome])}
+                      </span>
+                    </>
+                  ) : (
+                    'you did not win this market'
+                  )}
+                </p>
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Settlement (Admin only - simplified for demo) */}
+        {isActive && (
+          <section className="pt-16 border-t border-white/10">
+            {!showSettle ? (
+              <button
+                onClick={() => setShowSettle(true)}
+                className="text-lg text-white/30 hover:text-white/60 transition-opacity"
+              >
+                settle this market →
+              </button>
+            ) : (
+              <div>
+                <h2 className="text-xl mb-6">settle market</h2>
+                <p className="text-white/40 mb-6">select the winning outcome:</p>
+                
+                <div className="flex gap-4 mb-8">
+                  {event.outcomes.map((outcome) => (
+                    <button
+                      key={outcome}
+                      onClick={() => setSettleOutcome(outcome)}
+                      className={`px-6 py-3 border transition-colors ${
+                        settleOutcome === outcome
+                          ? 'border-white text-white'
+                          : 'border-white/20 text-white/60 hover:border-white/40'
+                      }`}
+                    >
+                      {outcome}
+                    </button>
+                  ))}
+                </div>
+                
+                <div className="flex gap-6">
+                  <button
+                    onClick={handleSettle}
+                    disabled={!settleOutcome || isSettling}
+                    className="text-xl text-white/60 hover:text-white transition-opacity disabled:text-white/30"
+                  >
+                    {isSettling ? 'settling...' : 'confirm settlement →'}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowSettle(false);
+                      setSettleOutcome(null);
+                    }}
+                    className="text-xl text-white/30 hover:text-white/60 transition-opacity"
+                  >
+                    cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </section>
+        )}
+      </div>
+    </main>
+  );
+}
