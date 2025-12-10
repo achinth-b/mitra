@@ -3,8 +3,9 @@
 import { Magic } from 'magic-sdk';
 import { SolanaExtension } from '@magic-ext/solana';
 
-// Magic instance (client-side only)
-let magic: Magic | null = null;
+// Use 'any' for the magic instance to avoid complex typing issues with extensions
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let magic: any = null;
 
 /**
  * Get the Magic SDK instance (client-side only)
@@ -14,7 +15,8 @@ let magic: Magic | null = null;
  * - Automatic Solana wallet creation per user
  * - Wallet signing for transactions
  */
-export function getMagic(): Magic {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function getMagic(): any {
   if (typeof window === 'undefined') {
     throw new Error('Magic can only be used on the client');
   }
@@ -188,7 +190,8 @@ export async function signAndSendTransaction(transaction: unknown): Promise<stri
 // Development Mock
 // ===========================================
 
-function createMockMagic(): Magic {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function createMockMagic(): any {
   console.log('🔧 Using mock Magic.link for development');
   
   const mockMagic = {

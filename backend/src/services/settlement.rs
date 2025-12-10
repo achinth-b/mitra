@@ -203,8 +203,12 @@ impl SettlementService {
         let event_pubkey = event.solana_pubkey.as_ref()
             .ok_or_else(|| AppError::BusinessLogic("Event not yet created on-chain".to_string()))?;
 
+        // Get the group's Solana pubkey (for now use group_id as placeholder)
+        // TODO: Fetch actual group solana_pubkey from database
+        let group_pubkey = event.group_id.to_string();
+
         let tx_signature = self.solana_client
-            .settle_event(event_pubkey, winning_outcome)
+            .settle_event(event_pubkey, &group_pubkey, winning_outcome)
             .await?;
 
         // Broadcast settlement notification

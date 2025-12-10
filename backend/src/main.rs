@@ -81,23 +81,39 @@ async fn main() -> AppResult<()> {
     // =========================================================================
     info!("Initializing core services...");
 
-    // Initialize application state with repositories
-    let app_state = Arc::new(AppState::new(pool.clone()));
-    info!("✓ Application state initialized with repositories");
-
-    // Initialize Solana client
+    // Initialize Solana client first
     let solana_config = SolanaConfig::from_env();
     info!("Solana RPC: {}", solana_config.rpc_url);
     
-    let solana_client = Arc::new(SolanaClient::with_config(solana_config));
-    
-    // Try to load keypair from environment or file
-    let keypair_path = std::env::var("BACKEND_KEYPAIR_PATH").ok();
-    if let Some(path) = &keypair_path {
-        info!("Loading backend keypair from: {}", path);
-        // Note: with_keypair_file consumes self, so we'd need to restructure
-        // For PoC, we'll use simulation mode
-    }
+    // Create Solana client and try to load keypair
+    let solana_client = {
+        let client = SolanaClient::with_config(solana_config);
+        
+        // Try to load keypair from environment or file
+        let keypair_path = std::env::var("BACKEND_KEYPAIR_PATH").ok();
+        if let Some(path) = keypair_path {
+            info!("Loading backend keypair from: {}", path);
+            match client.with_keypair_file(&path) {
+                Ok(client_with_key) => {
+                    info!("✓ Backend keypair loaded successfully");
+                    client_with_key
+                }
+                Err(e) => {
+                    warn!("Failed to load keypair from {}: {}", path, e);
+                    SolanaClient::with_config(SolanaConfig::from_env())
+                }
+            }
+        } else {
+            client
+        }
+    };
+
+    // Initialize application state with repositories and Solana client
+    let app_state = Arc::new(AppState::new(pool.clone(), solana_client));
+    info!("✓ Application state initialized with repositories");
+
+    // Get a reference to the Solana client from app_state
+    let solana_client = app_state.solana_client.clone();
     info!("✓ Solana client initialized (simulation mode for PoC)");
 
     // Initialize state manager

@@ -22,6 +22,7 @@ pub use error::{AppError, AppResult};
 
 use database::Database;
 use repositories::*;
+use solana_client::SolanaClient;
 use std::sync::Arc;
 
 /// Application state containing all repositories and services
@@ -32,11 +33,13 @@ pub struct AppState {
     pub group_member_repo: Arc<GroupMemberRepository>,
     pub event_repo: Arc<EventRepository>,
     pub bet_repo: Arc<BetRepository>,
+    pub balance_repo: Arc<BalanceRepository>,
+    pub solana_client: Arc<SolanaClient>,
 }
 
 impl AppState {
     /// Create a new AppState with initialized repositories
-    pub fn new(pool: sqlx::PgPool) -> Self {
+    pub fn new(pool: sqlx::PgPool, solana_client: SolanaClient) -> Self {
         let database = Database::new(pool.clone());
 
         Self {
@@ -45,7 +48,9 @@ impl AppState {
             user_repo: Arc::new(UserRepository::new(pool.clone())),
             group_member_repo: Arc::new(GroupMemberRepository::new(pool.clone())),
             event_repo: Arc::new(EventRepository::new(pool.clone())),
-            bet_repo: Arc::new(BetRepository::new(pool)),
+            bet_repo: Arc::new(BetRepository::new(pool.clone())),
+            balance_repo: Arc::new(BalanceRepository::new(pool)),
+            solana_client: Arc::new(solana_client),
         }
     }
 }

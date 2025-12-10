@@ -3,15 +3,29 @@ syntax = "proto3";
 package mitra;
 
 service MitraService {
+  // Group Management
   rpc CreateFriendGroup(CreateGroupRequest) returns (GroupResponse);
   rpc InviteMember(InviteMemberRequest) returns (MemberResponse);
+  
+  // Event/Market Management
   rpc CreateEvent(CreateEventRequest) returns (EventResponse);
-  rpc PlaceBet(PlaceBetRequest) returns (BetResponse);
   rpc GetEventPrices(GetPricesRequest) returns (PricesResponse);
   rpc SettleEvent(SettleEventRequest) returns (SettleResponse);
+  
+  // Betting
+  rpc PlaceBet(PlaceBetRequest) returns (BetResponse);
+  
+  // Treasury / Funds Management
+  rpc DepositFunds(DepositRequest) returns (DepositResponse);
+  rpc WithdrawFunds(WithdrawRequest) returns (WithdrawResponse);
+  rpc GetUserBalance(BalanceRequest) returns (BalanceResponse);
+  rpc ClaimWinnings(ClaimRequest) returns (ClaimResponse);
 }
 
+// ============================================================================
 // Friend Group Messages
+// ============================================================================
+
 message CreateGroupRequest {
   string name = 1;
   string admin_wallet = 2;
@@ -42,7 +56,10 @@ message MemberResponse {
   int64 joined_at = 5;
 }
 
+// ============================================================================
 // Event Messages
+// ============================================================================
+
 message CreateEventRequest {
   string group_id = 1;
   string title = 2;
@@ -67,7 +84,35 @@ message EventResponse {
   int64 created_at = 10;
 }
 
+message GetPricesRequest {
+  string event_id = 1;
+}
+
+message PricesResponse {
+  string event_id = 1;
+  map<string, double> prices = 2; // {"YES": 0.65, "NO": 0.35}
+  double total_volume = 3;
+  int64 timestamp = 4;
+}
+
+message SettleEventRequest {
+  string event_id = 1;
+  string winning_outcome = 2;
+  string settler_wallet = 3; // Admin or oracle
+  string signature = 4;
+}
+
+message SettleResponse {
+  string event_id = 1;
+  string winning_outcome = 2;
+  int64 settled_at = 3;
+  string solana_tx_signature = 4; // On-chain transaction signature
+}
+
+// ============================================================================
 // Bet Messages
+// ============================================================================
+
 message PlaceBetRequest {
   string event_id = 1;
   string user_wallet = 2;
@@ -83,28 +128,63 @@ message BetResponse {
   PricesResponse updated_prices = 4;
 }
 
-message GetPricesRequest {
-  string event_id = 1;
+// ============================================================================
+// Treasury / Funds Messages
+// ============================================================================
+
+message DepositRequest {
+  string group_id = 1;
+  string user_wallet = 2;
+  uint64 amount_sol = 3;      // Amount in lamports (1 SOL = 1_000_000_000 lamports)
+  uint64 amount_usdc = 4;     // Amount in smallest units (1 USDC = 1_000_000)
+  string user_usdc_account = 5; // User's USDC token account address
+  string signature = 6;
 }
 
-message PricesResponse {
-  string event_id = 1;
-  map<string, double> prices = 2; // {"YES": 0.65, "NO": 0.35}
-  double total_volume = 3;
-  int64 timestamp = 4;
+message DepositResponse {
+  bool success = 1;
+  string solana_tx_signature = 2;
+  uint64 new_balance_sol = 3;
+  uint64 new_balance_usdc = 4;
 }
 
-// Settlement Messages
-message SettleEventRequest {
-  string event_id = 1;
-  string winning_outcome = 2;
-  string settler_wallet = 3; // Admin or oracle
-  string signature = 4;
+message WithdrawRequest {
+  string group_id = 1;
+  string user_wallet = 2;
+  uint64 amount_sol = 3;
+  uint64 amount_usdc = 4;
+  string user_usdc_account = 5;
+  string signature = 6;
 }
 
-message SettleResponse {
+message WithdrawResponse {
+  bool success = 1;
+  string solana_tx_signature = 2;
+  uint64 new_balance_sol = 3;
+  uint64 new_balance_usdc = 4;
+}
+
+message BalanceRequest {
+  string group_id = 1;
+  string user_wallet = 2;
+}
+
+message BalanceResponse {
+  uint64 balance_sol = 1;
+  uint64 balance_usdc = 2;
+  bool funds_locked = 3;  // True if user has active bets
+}
+
+message ClaimRequest {
   string event_id = 1;
-  string winning_outcome = 2;
-  int64 settled_at = 3;
-  string solana_tx_signature = 4; // On-chain transaction signature
+  string user_wallet = 2;
+  string user_usdc_account = 3;
+  uint64 amount = 4;  // Amount to claim in USDC smallest units
+  string signature = 5;
+}
+
+message ClaimResponse {
+  bool success = 1;
+  string solana_tx_signature = 2;
+  uint64 amount_claimed = 3;
 }

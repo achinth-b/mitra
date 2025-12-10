@@ -444,3 +444,176 @@ function updateEventStatus(eventId: string, status: string, winningOutcome?: str
     }
   }
 }
+
+// ===========================================
+// Balance / Treasury Operations
+// ===========================================
+
+import type { BalanceResponse, TransactionResponse } from '@/types';
+
+export async function getBalance(
+  groupId: string,
+  userWallet: string
+): Promise<BalanceResponse> {
+  const isOnline = await checkBackend();
+  
+  if (isOnline) {
+    try {
+      const res = await fetch(API_BASE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: 'GetUserBalance',
+          data: {
+            group_id: groupId,
+            user_wallet: userWallet,
+          },
+        }),
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        return {
+          balanceSol: data.balanceSol || data.balance_sol || 0,
+          balanceUsdc: data.balanceUsdc || data.balance_usdc || 0,
+          fundsLocked: data.fundsLocked || data.funds_locked || false,
+        };
+      }
+    } catch (e) {
+      console.error('Backend error:', e);
+    }
+  }
+  
+  // Mock balance from localStorage
+  const stored = localStorage.getItem(`mitra_balance_${groupId}_${userWallet}`);
+  if (stored) {
+    return JSON.parse(stored);
+  }
+  return { balanceSol: 0, balanceUsdc: 0, fundsLocked: false };
+}
+
+export async function deposit(
+  groupId: string,
+  userWallet: string,
+  amountUsdc: number,
+  signature: string = 'dev'
+): Promise<TransactionResponse> {
+  const isOnline = await checkBackend();
+  
+  if (isOnline) {
+    try {
+      const res = await fetch(API_BASE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: 'DepositFunds',
+          data: {
+            group_id: groupId,
+            user_wallet: userWallet,
+            amount_sol: 0,
+            amount_usdc: amountUsdc,
+            user_usdc_account: userWallet, // Placeholder - would need real USDC ATA
+            signature,
+          },
+        }),
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        return {
+          success: data.success,
+          solanaTxSignature: data.solanaTxSignature || data.solana_tx_signature,
+          newBalanceSol: data.newBalanceSol || data.new_balance_sol || 0,
+          newBalanceUsdc: data.newBalanceUsdc || data.new_balance_usdc || 0,
+        };
+      }
+    } catch (e) {
+      console.error('Backend error:', e);
+    }
+  }
+  
+  // Mock deposit
+  const current = await getBalance(groupId, userWallet);
+  const newBalance: BalanceResponse = {
+    ...current,
+    balanceUsdc: current.balanceUsdc + amountUsdc,
+  };
+  localStorage.setItem(`mitra_balance_${groupId}_${userWallet}`, JSON.stringify(newBalance));
+  
+  return {
+    success: true,
+    solanaTxSignature: 'mock_deposit_' + Date.now(),
+    newBalanceSol: newBalance.balanceSol,
+    newBalanceUsdc: newBalance.balanceUsdc,
+  };
+}
+
+export async function withdraw(
+  groupId: string,
+  userWallet: string,
+  amountUsdc: number,
+  signature: string = 'dev'
+): Promise<TransactionResponse> {
+  const isOnline = await checkBackend();
+  
+  if (isOnline) {
+    try {
+      const res = await fetch(API_BASE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: 'WithdrawFunds',
+          data: {
+            group_id: groupId,
+            user_wallet: userWallet,
+            amount_sol: 0,
+            amount_usdc: amountUsdc,
+            user_usdc_account: userWallet, // Placeholder
+            signature,
+          },
+        }),
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        return {
+          success: data.success,
+          solanaTxSignature: data.solanaTxSignature || data.solana_tx_signature,
+          newBalanceSol: data.newBalanceSol || data.new_balance_sol || 0,
+          newBalanceUsdc: data.newBalanceUsdc || data.new_balance_usdc || 0,
+        };
+      }
+    } catch (e) {
+      console.error('Backend error:', e);
+    }
+  }
+  
+  // Mock withdraw
+  const current = await getBalance(groupId, userWallet);
+  if (current.balanceUsdc < amountUsdc) {
+    throw new Error('Insufficient balance');
+  }
+  
+  const newBalance: BalanceResponse = {
+    ...current,
+    balanceUsdc: current.balanceUsdc - amountUsdc,
+  };
+  localStorage.setItem(`mitra_balance_${groupId}_${userWallet}`, JSON.stringify(newBalance));
+  
+  return {
+    success: true,
+    solanaTxSignature: 'mock_withdraw_' + Date.now(),
+    newBalanceSol: newBalance.balanceSol,
+    newBalanceUsdc: newBalance.balanceUsdc,
+  };
+}
+
+// Format USDC for display (6 decimal places on chain -> display)
+export function formatUsdc(amount: number): string {
+  return (amount / 1_000_000).toFixed(2);
+}
+
+// Parse USDC from display (display -> 6 decimal places)
+export function parseUsdc(display: string): number {
+  return Math.floor(parseFloat(display) * 1_000_000);
+}

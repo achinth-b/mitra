@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 @theme {
-  --font-serif: 'Cormorant Garamond', 'Times New Roman', serif;
+  --font-serif: 'EB Garamond', 'Garamond', 'Times New Roman', serif;
   --font-sans: 'Inter', system-ui, sans-serif;
 }
 
@@ -11,15 +11,17 @@
   box-sizing: border-box;
 }
 
-html, body {
-  background: #000;
-  color: #fff;
-  min-height: 100vh;
+html {
+  height: 100%;
+  width: 100%;
 }
 
 body {
-  font-family: 'Cormorant Garamond', serif;
-  font-weight: 400;
+  background-color: #000000;
+  color: #ffffff;
+  font-family: 'EB Garamond', 'Garamond', 'Times New Roman', serif;
+  min-height: 100vh;
+  min-height: 100dvh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }

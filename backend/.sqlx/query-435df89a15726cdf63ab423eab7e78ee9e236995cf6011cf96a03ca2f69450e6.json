@@ -1,0 +1,48 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO user_group_balances (user_id, group_id, balance_usdc, locked_usdc)\n            VALUES ($1, $2, $3, 0)\n            ON CONFLICT (user_id, group_id) DO UPDATE \n            SET balance_usdc = user_group_balances.balance_usdc + $3, updated_at = NOW()\n            RETURNING user_id, group_id, balance_usdc, locked_usdc, updated_at\n            ",
+  "describe": {
+    "columns": [
+      {
+        "ordinal": 0,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 1,
+        "name": "group_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 2,
+        "name": "balance_usdc",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 3,
+        "name": "locked_usdc",
+        "type_info": "Numeric"
+      },
+      {
+        "ordinal": 4,
+        "name": "updated_at",
+        "type_info": "Timestamp"
+      }
+    ],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Numeric"
+      ]
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "435df89a15726cdf63ab423eab7e78ee9e236995cf6011cf96a03ca2f69450e6"
+}

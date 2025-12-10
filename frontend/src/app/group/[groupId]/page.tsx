@@ -3,8 +3,11 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuthStore } from '@/store/auth';
-import { getGroups, getEvents, saveEvents, createEvent, getEventPrices } from '@/lib/api';
-import type { FriendGroup, Event, Prices } from '@/types';
+import { 
+  getGroups, getEvents, saveEvents, createEvent, getEventPrices,
+  getBalance, deposit, withdraw, formatUsdc, parseUsdc
+} from '@/lib/api';
+import type { FriendGroup, Event, Prices, BalanceResponse } from '@/types';
 
 export default function GroupPage() {
   const router = useRouter();
@@ -15,8 +18,14 @@ export default function GroupPage() {
   const [group, setGroup] = useState<FriendGroup | null>(null);
   const [events, setEvents] = useState<Event[]>([]);
   const [prices, setPrices] = useState<Record<string, Prices>>({});
+  const [balance, setBalance] = useState<BalanceResponse | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [showDeposit, setShowDeposit] = useState(false);
+  const [showWithdraw, setShowWithdraw] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [isTransacting, setIsTransacting] = useState(false);
+  const [transactionAmount, setTransactionAmount] = useState('');
+  const [transactionError, setTransactionError] = useState<string | null>(null);
   
   // Form state
   const [title, setTitle] = useState('');
@@ -42,6 +51,9 @@ export default function GroupPage() {
       });
       
       getEvents(groupId).then(setEvents);
+      
+      // Load balance
+      getBalance(groupId, user.walletAddress).then(setBalance);
     }
   }, [groupId, user.walletAddress]);
 
@@ -97,6 +109,60 @@ export default function GroupPage() {
     setIsCreating(false);
   };
 
+  const handleDeposit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user.walletAddress || !transactionAmount) return;
+    
+    setIsTransacting(true);
+    setTransactionError(null);
+    
+    try {
+      const amountUsdc = parseUsdc(transactionAmount);
+      const result = await deposit(groupId, user.walletAddress, amountUsdc);
+      
+      if (result.success) {
+        setBalance({
+          balanceSol: result.newBalanceSol,
+          balanceUsdc: result.newBalanceUsdc,
+          fundsLocked: balance?.fundsLocked || false,
+        });
+        setShowDeposit(false);
+        setTransactionAmount('');
+      }
+    } catch (err) {
+      setTransactionError(err instanceof Error ? err.message : 'Deposit failed');
+    } finally {
+      setIsTransacting(false);
+    }
+  };
+
+  const handleWithdraw = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user.walletAddress || !transactionAmount) return;
+    
+    setIsTransacting(true);
+    setTransactionError(null);
+    
+    try {
+      const amountUsdc = parseUsdc(transactionAmount);
+      const result = await withdraw(groupId, user.walletAddress, amountUsdc);
+      
+      if (result.success) {
+        setBalance({
+          balanceSol: result.newBalanceSol,
+          balanceUsdc: result.newBalanceUsdc,
+          fundsLocked: balance?.fundsLocked || false,
+        });
+        setShowWithdraw(false);
+        setTransactionAmount('');
+      }
+    } catch (err) {
+      setTransactionError(err instanceof Error ? err.message : 'Withdrawal failed');
+    } finally {
+      setIsTransacting(false);
+    }
+  };
+
   const formatPrice = (price: number) => `${Math.round(price * 100)}%`;
   const formatVolume = (vol: number) => `$${vol.toFixed(0)}`;
 
@@ -121,6 +187,108 @@ export default function GroupPage() {
           </button>
           <h1 className="text-4xl md:text-5xl">{group.name}</h1>
         </header>
+
+        {/* Balance Section */}
+        <section className="mb-16 pb-16 border-b border-white/10">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl md:text-3xl">your balance</h2>
+            <div className="flex gap-4">
+              <button
+                onClick={() => { setShowDeposit(true); setShowWithdraw(false); setTransactionError(null); }}
+                className="text-lg text-white/40 hover:text-white transition-opacity"
+              >
+                + deposit
+              </button>
+              <button
+                onClick={() => { setShowWithdraw(true); setShowDeposit(false); setTransactionError(null); }}
+                className="text-lg text-white/40 hover:text-white transition-opacity"
+              >
+                − withdraw
+              </button>
+            </div>
+          </div>
+
+          <p className="text-4xl md:text-5xl mb-2">
+            ${balance ? formatUsdc(balance.balanceUsdc) : '0.00'} <span className="text-white/40 text-2xl">USDC</span>
+          </p>
+          
+          {balance?.fundsLocked && (
+            <p className="text-lg text-white/40 italic">some funds locked in active bets</p>
+          )}
+
+          {/* Deposit Form */}
+          {showDeposit && (
+            <form onSubmit={handleDeposit} className="mt-8 p-6 border border-white/20 rounded">
+              <p className="text-lg text-white/60 mb-4">deposit USDC to bet in this group</p>
+              <input
+                type="number"
+                value={transactionAmount}
+                onChange={(e) => setTransactionAmount(e.target.value)}
+                placeholder="amount in USDC"
+                step="0.01"
+                min="0.01"
+                className="w-full text-2xl py-4 border-b border-white/30 focus:border-white/70 transition-colors bg-transparent mb-4"
+                autoFocus
+              />
+              {transactionError && (
+                <p className="text-red-400/80 mb-4">{transactionError}</p>
+              )}
+              <div className="flex gap-8">
+                <button
+                  type="submit"
+                  disabled={!transactionAmount || isTransacting}
+                  className="text-xl text-white/60 hover:text-white transition-opacity disabled:text-white/30"
+                >
+                  {isTransacting ? 'depositing...' : 'deposit →'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowDeposit(false); setTransactionAmount(''); setTransactionError(null); }}
+                  className="text-xl text-white/30 hover:text-white/60 transition-opacity"
+                >
+                  cancel
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Withdraw Form */}
+          {showWithdraw && (
+            <form onSubmit={handleWithdraw} className="mt-8 p-6 border border-white/20 rounded">
+              <p className="text-lg text-white/60 mb-4">withdraw USDC from this group</p>
+              <input
+                type="number"
+                value={transactionAmount}
+                onChange={(e) => setTransactionAmount(e.target.value)}
+                placeholder="amount in USDC"
+                step="0.01"
+                min="0.01"
+                max={balance ? parseFloat(formatUsdc(balance.balanceUsdc)) : undefined}
+                className="w-full text-2xl py-4 border-b border-white/30 focus:border-white/70 transition-colors bg-transparent mb-4"
+                autoFocus
+              />
+              {transactionError && (
+                <p className="text-red-400/80 mb-4">{transactionError}</p>
+              )}
+              <div className="flex gap-8">
+                <button
+                  type="submit"
+                  disabled={!transactionAmount || isTransacting}
+                  className="text-xl text-white/60 hover:text-white transition-opacity disabled:text-white/30"
+                >
+                  {isTransacting ? 'withdrawing...' : 'withdraw →'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowWithdraw(false); setTransactionAmount(''); setTransactionError(null); }}
+                  className="text-xl text-white/30 hover:text-white/60 transition-opacity"
+                >
+                  cancel
+                </button>
+              </div>
+            </form>
+          )}
+        </section>
 
         {/* Markets Section */}
         <section>

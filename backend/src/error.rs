@@ -95,7 +95,7 @@ pub enum RepositoryError {
 
     /// Record not found
     #[error("Record not found")]
-    NotFound,
+    NotFound(String),
 
     /// Duplicate record
     #[error("Duplicate record: {0}")]
@@ -108,16 +108,21 @@ pub enum RepositoryError {
     /// Invalid input
     #[error("Invalid input: {0}")]
     InvalidInput(String),
+
+    /// Business rule violation (e.g., insufficient balance)
+    #[error("Business rule violation: {0}")]
+    BusinessRule(String),
 }
 
 impl From<RepositoryError> for AppError {
     fn from(err: RepositoryError) -> Self {
         match err {
-            RepositoryError::NotFound => AppError::NotFound("Record not found".to_string()),
+            RepositoryError::NotFound(msg) => AppError::NotFound(msg),
             RepositoryError::Query(e) => AppError::Sqlx(e),
             RepositoryError::Duplicate(msg) => AppError::BusinessLogic(format!("Duplicate: {}", msg)),
             RepositoryError::ConstraintViolation(msg) => AppError::Validation(msg),
             RepositoryError::InvalidInput(msg) => AppError::Validation(msg),
+            RepositoryError::BusinessRule(msg) => AppError::BusinessLogic(msg),
         }
     }
 }
@@ -125,7 +130,7 @@ impl From<RepositoryError> for AppError {
 impl From<SqlxError> for RepositoryError {
     fn from(err: SqlxError) -> Self {
         match &err {
-            SqlxError::RowNotFound => RepositoryError::NotFound,
+            SqlxError::RowNotFound => RepositoryError::NotFound("Record not found".to_string()),
             SqlxError::Database(db_err) => {
                 // Check for common PostgreSQL error codes
                 let code = db_err.code().map(|c| c.to_string());

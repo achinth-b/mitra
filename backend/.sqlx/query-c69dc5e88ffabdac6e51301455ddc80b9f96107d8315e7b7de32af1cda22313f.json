@@ -1,0 +1,18 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            INSERT INTO transactions \n            (user_id, group_id, event_id, transaction_type, amount_usdc, balance_before, balance_after, status, description)\n            VALUES ($1, $2, $3, 'bet_placed', $4, $5, $5, 'confirmed', 'Bet placed - funds locked')\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Uuid",
+        "Uuid",
+        "Uuid",
+        "Numeric",
+        "Numeric"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c69dc5e88ffabdac6e51301455ddc80b9f96107d8315e7b7de32af1cda22313f"
+}

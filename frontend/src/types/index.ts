@@ -7,6 +7,12 @@ export interface User {
   createdAt: number;
 }
 
+export interface UserBalance {
+  balanceSol: number; // in lamports
+  balanceUsdc: number; // in smallest units (6 decimals)
+  fundsLocked: boolean;
+}
+
 export interface FriendGroup {
   groupId: string;
   solanaPubkey: string;
@@ -14,6 +20,7 @@ export interface FriendGroup {
   adminWallet: string;
   createdAt: number;
   memberCount?: number;
+  balance?: UserBalance;
 }
 
 export interface GroupMember {
@@ -96,5 +103,37 @@ export interface WsMessage {
   channel?: string;
   eventId?: string;
   data?: unknown;
+}
+
+// Balance/Treasury types
+export interface DepositRequest {
+  groupId: string;
+  userWallet: string;
+  amountSol: number;
+  amountUsdc: number;
+  userUsdcAccount: string;
+  signature: string;
+}
+
+export interface WithdrawRequest {
+  groupId: string;
+  userWallet: string;
+  amountSol: number;
+  amountUsdc: number;
+  userUsdcAccount: string;
+  signature: string;
+}
+
+export interface BalanceResponse {
+  balanceSol: number;
+  balanceUsdc: number;
+  fundsLocked: boolean;
+}
+
+export interface TransactionResponse {
+  success: boolean;
+  solanaTxSignature: string;
+  newBalanceSol: number;
+  newBalanceUsdc: number;
 }
 

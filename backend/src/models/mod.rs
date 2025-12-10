@@ -3,6 +3,7 @@
 //! This module contains all database-backed models representing
 //! the core entities of the prediction market platform.
 
+pub mod balance;
 pub mod bet;
 pub mod event;
 pub mod friend_group;
@@ -11,6 +12,7 @@ pub mod price_snapshot;
 pub mod user;
 
 // Re-export all models for convenient access
+pub use balance::{Payout, Settlement, Transaction, TransactionType, UserGroupBalance};
 pub use bet::Bet;
 pub use event::{Event, EventStatus, SettlementType};
 pub use friend_group::FriendGroup;
