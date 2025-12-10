@@ -207,11 +207,8 @@ const styles = `
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    height: 100vh;
-    height: 100dvh;
-    width: 100vw;
+    width: 100%;
     text-align: center;
-    padding: 5vw;
   }
 
   .content {
@@ -221,14 +218,14 @@ const styles = `
 
   h1 {
     font-size: clamp(1.2rem, 5vw, 2rem);
-    font-weight: normal;
+    font-weight: 600;
     margin-bottom: clamp(1.5rem, 5vw, 3rem);
     line-height: 1.2;
   }
 
   h2 {
     font-size: clamp(1.2rem, 5vw, 2rem);
-    font-weight: normal;
+    font-weight: 600;
     margin-bottom: clamp(1.5rem, 5vw, 3rem);
     line-height: 1.2;
   }
@@ -236,8 +233,13 @@ const styles = `
   .coming-soon {
     font-size: clamp(1.2rem, 5vw, 2rem);
     font-style: italic;
-    margin-top: clamp(2rem, 6vw, 4rem);
+    margin-top: clamp(3rem, 10vw, 6rem);
     opacity: 0.9;
+    transition: opacity 0.2s ease;
+  }
+
+  .coming-soon:hover {
+    opacity: 1;
   }
 
   .submit-btn {
