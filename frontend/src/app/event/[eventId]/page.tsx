@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAuthStore } from '@/store/auth';
-import { getEvent, getEventPrices, placeBet, getUserBets, settleEvent } from '@/lib/api';
+import { getEvent, getEventPrices, placeBet, getUserBets, settleEvent, getPublicBets } from '@/lib/api';
 import { signMessage } from '@/lib/magic';
 import type { Event, Prices, Bet } from '@/types';
 
@@ -11,18 +11,20 @@ export default function EventPage() {
   const router = useRouter();
   const params = useParams();
   const eventId = params.eventId as string;
-  
+
   const { user, checkAuth, isLoading: authLoading } = useAuthStore();
   const [event, setEvent] = useState<Event | null>(null);
   const [prices, setPrices] = useState<Prices | null>(null);
   const [userBets, setUserBets] = useState<Bet[]>([]);
-  
+
   // Betting state
   const [selectedOutcome, setSelectedOutcome] = useState<string | null>(null);
   const [amount, setAmount] = useState('');
+  const [isPublic, setIsPublic] = useState(false);
   const [isPlacing, setIsPlacing] = useState(false);
   const [lastBet, setLastBet] = useState<{ shares: number; price: number } | null>(null);
-  
+  const [publicBets, setPublicBets] = useState<Bet[]>([]);
+
   // Settlement state
   const [showSettle, setShowSettle] = useState(false);
   const [settleOutcome, setSettleOutcome] = useState<string | null>(null);
@@ -43,11 +45,12 @@ export default function EventPage() {
     getEvent(eventId).then(setEvent);
   }, [eventId]);
 
-  // Load user's bets
+  // Load user's bets and public bets
   useEffect(() => {
     if (user.walletAddress) {
       setUserBets(getUserBets(eventId, user.walletAddress));
     }
+    setPublicBets(getPublicBets(eventId));
   }, [eventId, user.walletAddress]);
 
   // Fetch prices
@@ -64,7 +67,7 @@ export default function EventPage() {
 
   const handlePlaceBet = async () => {
     if (!selectedOutcome || !amount || !user.walletAddress || !event) return;
-    
+
     const amountNum = parseFloat(amount);
     if (isNaN(amountNum) || amountNum <= 0) return;
 
@@ -74,22 +77,25 @@ export default function EventPage() {
     try {
       // Sign the bet
       const sig = await signMessage(`bet:${eventId}:${selectedOutcome}:${amountNum}`);
-      
+
       const result = await placeBet(
         eventId,
         user.walletAddress,
         selectedOutcome,
         amountNum,
-        sig
+        sig,
+        isPublic
       );
 
       setLastBet({ shares: result.shares, price: result.price });
       setPrices(result.updatedPrices);
       setUserBets(getUserBets(eventId, user.walletAddress));
-      
+      setPublicBets(getPublicBets(eventId));
+
       // Reset form
       setSelectedOutcome(null);
       setAmount('');
+      setIsPublic(false);
     } catch (err) {
       console.error('Bet failed:', err);
     } finally {
@@ -105,11 +111,11 @@ export default function EventPage() {
     try {
       const sig = await signMessage(`settle:${eventId}:${settleOutcome}`);
       await settleEvent(eventId, settleOutcome, user.walletAddress, sig);
-      
+
       // Refresh event
       const updated = await getEvent(eventId);
       if (updated) setEvent(updated);
-      
+
       setShowSettle(false);
       setSettleOutcome(null);
     } catch (err) {
@@ -152,13 +158,13 @@ export default function EventPage() {
             ← back
           </button>
           <h1 className="text-3xl md:text-5xl leading-tight mb-6">{event.title}</h1>
-          
+
           {isActive && prices && (
             <p className="text-lg text-white/40">
               {formatUsd(prices.totalVolume)} total volume
             </p>
           )}
-          
+
           {event.status === 'resolved' && (
             <p className="text-xl text-white/60">
               resolved: <span className="italic">{event.winningOutcome}</span>
@@ -174,7 +180,7 @@ export default function EventPage() {
               {event.outcomes.map((outcome) => {
                 const price = prices.prices[outcome] || 0.5;
                 const isSelected = selectedOutcome === outcome;
-                
+
                 return (
                   <button
                     key={outcome}
@@ -196,7 +202,7 @@ export default function EventPage() {
             <h2 className="text-xl text-white/40 mb-6">
               bet on <span className="text-white">{selectedOutcome}</span>
             </h2>
-            
+
             <div className="mb-6">
               <input
                 type="number"
@@ -207,7 +213,7 @@ export default function EventPage() {
                 autoFocus
               />
             </div>
-            
+
             {/* Quick amounts */}
             <div className="flex gap-6 mb-8">
               {[10, 25, 50, 100].map((quick) => (
@@ -220,7 +226,7 @@ export default function EventPage() {
                 </button>
               ))}
             </div>
-            
+
             {/* Potential payout */}
             {amount && parseFloat(amount) > 0 && prices && (
               <p className="text-lg text-white/60 mb-8">
@@ -230,7 +236,20 @@ export default function EventPage() {
                 </span>
               </p>
             )}
-            
+
+            {/* Visibility toggle */}
+            <label className="flex items-center gap-3 mb-8 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isPublic}
+                onChange={(e) => setIsPublic(e.target.checked)}
+                className="w-5 h-5 accent-white"
+              />
+              <span className="text-lg text-white/60">
+                share this bet with my group
+              </span>
+            </label>
+
             <button
               onClick={handlePlaceBet}
               disabled={!amount || parseFloat(amount) <= 0 || isPlacing}
@@ -255,7 +274,7 @@ export default function EventPage() {
         {userBets.length > 0 && (
           <section className="mb-16">
             <h2 className="text-xl text-white/40 mb-6">your position</h2>
-            
+
             <div className="space-y-4 mb-6">
               {Object.entries(userPosition).map(([outcome, shares]) => (
                 <div key={outcome} className="flex justify-between text-lg">
@@ -264,11 +283,11 @@ export default function EventPage() {
                 </div>
               ))}
             </div>
-            
+
             <p className="text-white/40">
               total invested: {formatUsd(totalInvested)}
             </p>
-            
+
             {event.status === 'resolved' && event.winningOutcome && (
               <div className="mt-6 p-4 border border-white/20">
                 <p className="text-lg">
@@ -302,23 +321,22 @@ export default function EventPage() {
               <div>
                 <h2 className="text-xl mb-6">settle market</h2>
                 <p className="text-white/40 mb-6">select the winning outcome:</p>
-                
+
                 <div className="flex gap-4 mb-8">
                   {event.outcomes.map((outcome) => (
                     <button
                       key={outcome}
                       onClick={() => setSettleOutcome(outcome)}
-                      className={`px-6 py-3 border transition-colors ${
-                        settleOutcome === outcome
-                          ? 'border-white text-white'
-                          : 'border-white/20 text-white/60 hover:border-white/40'
-                      }`}
+                      className={`px-6 py-3 border transition-colors ${settleOutcome === outcome
+                        ? 'border-white text-white'
+                        : 'border-white/20 text-white/60 hover:border-white/40'
+                        }`}
                     >
                       {outcome}
                     </button>
                   ))}
                 </div>
-                
+
                 <div className="flex gap-6">
                   <button
                     onClick={handleSettle}
@@ -339,6 +357,35 @@ export default function EventPage() {
                 </div>
               </div>
             )}
+          </section>
+        )}
+
+        {/* Public Bets from Group */}
+        {publicBets.length > 0 && (
+          <section className="mb-16 pt-16 border-t border-white/10">
+            <h2 className="text-xl text-white/40 mb-6">group activity</h2>
+            <ul className="space-y-3">
+              {publicBets
+                .filter(b => b.userId !== user.walletAddress) // Don't show own bets
+                .slice(0, 10) // Limit to 10 most recent
+                .map((bet) => (
+                  <li
+                    key={bet.betId}
+                    className="flex items-center justify-between py-3 px-4 border border-white/10 rounded-lg"
+                  >
+                    <div>
+                      <span className="text-white/60 font-mono text-sm">
+                        {bet.userId.slice(0, 6)}...{bet.userId.slice(-4)}
+                      </span>
+                      <span className="text-white/40 mx-2">bet on</span>
+                      <span className="text-white">{bet.outcome}</span>
+                    </div>
+                    <span className="text-white/60">
+                      {bet.shares.toFixed(1)} shares
+                    </span>
+                  </li>
+                ))}
+            </ul>
           </section>
         )}
       </div>

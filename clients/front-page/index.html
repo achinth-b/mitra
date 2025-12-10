@@ -1,13 +1,18 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🤝</text></svg>">
-    <link rel="mask-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🤝</text></svg>" color="#ffffff">
+    <link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&display=swap"
+        rel="stylesheet">
+    <link rel="icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🤝</text></svg>">
+    <link rel="mask-icon"
+        href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🤝</text></svg>"
+        color="#ffffff">
     <title>mitra</title>
     <style>
         * {
@@ -30,7 +35,8 @@
             justify-content: center;
             align-items: center;
             min-height: 100vh;
-            min-height: 100dvh; /* Dynamic viewport height for mobile */
+            min-height: 100dvh;
+            /* Dynamic viewport height for mobile */
             width: 100vw;
             text-align: center;
             padding: 5vw;
@@ -49,11 +55,27 @@
             line-height: 1.2;
         }
 
-        .coming-soon {
+        h2 {
+            font-size: clamp(1.2rem, 5vw, 2rem);
+            font-weight: normal;
+            margin-bottom: clamp(1.5rem, 5vw, 3rem);
+            line-height: 1.2;
+        }
+
+        .enter-link {
             font-size: clamp(1.2rem, 5vw, 2rem);
             font-style: italic;
             margin-top: clamp(2rem, 6vw, 4rem);
             opacity: 0.9;
+            color: #ffffff;
+            text-decoration: none;
+            display: inline-block;
+            cursor: pointer;
+            transition: opacity 0.2s ease;
+        }
+
+        .enter-link:hover {
+            opacity: 1;
         }
 
         /* Tablet specific adjustments */
@@ -62,7 +84,7 @@
                 font-size: clamp(1.5rem, 4vw, 1.8rem);
             }
 
-            .coming-soon {
+            .enter-link {
                 font-size: clamp(1.5rem, 4vw, 1.8rem);
             }
         }
@@ -77,18 +99,24 @@
                 font-size: clamp(1.2rem, 6vw, 1.6rem);
             }
 
-            .coming-soon {
+            .enter-link {
                 font-size: clamp(1.2rem, 6vw, 1.6rem);
             }
         }
     </style>
 </head>
+
 <body>
+    <!-- 
+        Brand constants source of truth: /shared/brand.ts
+        - name: 'mitra'
+        - tagline: 'bet on (or against) your friends.'
+    -->
     <div class="content">
         <h1>bet on (or against) your friends.</h1>
         <h2>this <em>might</em> ruin your friendships.</h2>
-        <p class="coming-soon">coming soon...</p>
+        <a href="https://app.mitra.markets" class="enter-link">enter →</a>
     </div>
 </body>
-</html>
 
+</html>

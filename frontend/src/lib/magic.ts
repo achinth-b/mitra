@@ -68,6 +68,35 @@ export async function loginWithEmail(email: string): Promise<string | null> {
 }
 
 /**
+ * Restore a mock session directly (for dev mode session restoration)
+ * This creates the mock_user without requiring email verification
+ */
+export function restoreMockSession(email: string): { walletAddress: string } {
+  console.log('[MAGIC] restoreMockSession called for:', email);
+  
+  // Generate FULLY deterministic wallet from email (same logic as mock login)
+  let hash = 0;
+  for (let i = 0; i < email.length; i++) {
+    const char = email.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  const hashStr = Math.abs(hash).toString(36);
+  const mockWallet = `Dev${hashStr.padStart(8, '0')}`;
+  
+  const userData = {
+    email,
+    publicAddress: mockWallet,
+    issuer: `did:ethr:${mockWallet}`,
+  };
+  
+  localStorage.setItem('mock_user', JSON.stringify(userData));
+  console.log('[MAGIC] Session restored:', email, '→', mockWallet);
+  
+  return { walletAddress: mockWallet };
+}
+
+/**
  * Logout and clear session
  */
 export async function logout(): Promise<void> {
@@ -81,7 +110,7 @@ export async function logout(): Promise<void> {
 }
 
 /**
- * Get current user metadata including Solana wallet
+ * Get current user info from Magic
  */
 export async function getUser() {
   try {
@@ -89,22 +118,54 @@ export async function getUser() {
     
     // Check if user is logged in
     const isLoggedIn = await m.user.isLoggedIn();
-    if (!isLoggedIn) return null;
-    
-    // Get metadata - handle both real Magic and mock
-    if (typeof m.user.getMetadata === 'function') {
-      const metadata = await m.user.getMetadata();
-      return metadata;
+    if (!isLoggedIn) {
+      return null;
     }
     
-    // Fallback for mock
-    const stored = localStorage.getItem('mock_user');
-    return stored ? JSON.parse(stored) : null;
+    // Get user info (email)
+    let email: string | null = null;
+    
+    // Try getMetadata first
+    try {
+      const metadata = await m.user.getMetadata();
+      email = metadata?.email || null;
+    } catch {
+      // getMetadata not available in this SDK version
+    }
+    
+    // If no email, try getInfo as fallback
+    if (!email) {
+      try {
+        const info = await m.user.getInfo();
+        email = info?.email || null;
+      } catch {
+        // getInfo also failed
+      }
+    }
+    
+    if (!email) {
+      return null;
+    }
+    
+    // Get Solana wallet address - magic-sdk v31+ uses solana.getPublicAddress()
+    let solanaAddress: string | null = null;
+    try {
+      const solana = (m as any).solana;
+      if (solana?.getPublicAddress) {
+        const address = await solana.getPublicAddress();
+        solanaAddress = address || null;
+      }
+    } catch {
+      // Solana extension not available or error
+    }
+    
+    return {
+      email,
+      publicAddress: solanaAddress,
+    };
   } catch (error) {
-    console.error('Get user error:', error);
-    // Try localStorage fallback
-    const stored = localStorage.getItem('mock_user');
-    return stored ? JSON.parse(stored) : null;
+    console.error('Magic getUser error:', error);
+    return null;
   }
 }
 
@@ -214,9 +275,16 @@ function createMockMagic(): any {
         // Simulate login delay
         await new Promise(resolve => setTimeout(resolve, 500));
         
-        // Generate deterministic wallet from email
-        const walletSeed = email.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
-        const mockWallet = `Dev${walletSeed.toString(36)}${Math.random().toString(36).substring(2, 8)}`;
+        // Generate FULLY deterministic wallet from email (no random!)
+        // This ensures the same email always gets the same wallet
+        let hash = 0;
+        for (let i = 0; i < email.length; i++) {
+          const char = email.charCodeAt(i);
+          hash = ((hash << 5) - hash) + char;
+          hash = hash & hash; // Convert to 32bit integer
+        }
+        const hashStr = Math.abs(hash).toString(36);
+        const mockWallet = `Dev${hashStr.padStart(8, '0')}`;
         
         const userData = {
           email,

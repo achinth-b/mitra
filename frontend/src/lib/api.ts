@@ -16,6 +16,7 @@ import type {
   Bet,
   Prices,
   BetResponse,
+  GroupMember,
 } from '@/types';
 
 const API_BASE = '/api/grpc';
@@ -280,7 +281,8 @@ export async function placeBet(
   userWallet: string,
   outcome: string,
   amountUsdc: number,
-  signature: string = 'dev'
+  signature: string = 'dev',
+  isPublic: boolean = false
 ): Promise<BetResponse> {
   const isOnline = await checkBackend();
   
@@ -297,6 +299,7 @@ export async function placeBet(
             outcome,
             amount_usdc: amountUsdc,
             signature,
+            is_public: isPublic,
           },
         }),
       });
@@ -314,6 +317,7 @@ export async function placeBet(
           price: data.price,
           amountUsdc,
           createdAt: Date.now() / 1000,
+          isPublic,
         };
         saveBet(eventId, bet);
         
@@ -343,6 +347,7 @@ export async function placeBet(
     price,
     amountUsdc,
     createdAt: Date.now() / 1000,
+    isPublic,
   };
   
   saveBet(eventId, bet);
@@ -374,6 +379,13 @@ function saveBet(eventId: string, bet: Bet): void {
   const bets = getBets(eventId);
   bets.push(bet);
   localStorage.setItem(`mitra_bets_${eventId}`, JSON.stringify(bets));
+}
+
+/**
+ * Get all public bets for an event (visible to all group members)
+ */
+export function getPublicBets(eventId: string): Bet[] {
+  return getBets(eventId).filter(b => b.isPublic);
 }
 
 // ===========================================
@@ -616,4 +628,159 @@ export function formatUsdc(amount: number): string {
 // Parse USDC from display (display -> 6 decimal places)
 export function parseUsdc(display: string): number {
   return Math.floor(parseFloat(display) * 1_000_000);
+}
+
+// ===========================================
+// Invite System & Members
+// ===========================================
+
+interface InviteData {
+  groupId: string;
+  code: string;
+  createdBy: string;
+  createdAt: number;
+}
+
+/**
+ * Generate a unique invite link for a group
+ */
+export function generateInviteLink(groupId: string, creatorWallet: string): string {
+  const code = `inv_${groupId.slice(0, 8)}_${Math.random().toString(36).substring(2, 8)}`;
+  
+  // Store invite in localStorage
+  const invites = getStoredInvites();
+  invites.push({
+    groupId,
+    code,
+    createdBy: creatorWallet,
+    createdAt: Date.now(),
+  });
+  localStorage.setItem('mitra_invites', JSON.stringify(invites));
+  
+  // Return full URL
+  return `${window.location.origin}/invite/${code}`;
+}
+
+function getStoredInvites(): InviteData[] {
+  const stored = localStorage.getItem('mitra_invites');
+  return stored ? JSON.parse(stored) : [];
+}
+
+/**
+ * Get invite data by code
+ */
+export function getInviteByCode(code: string): InviteData | null {
+  const invites = getStoredInvites();
+  return invites.find(i => i.code === code) || null;
+}
+
+/**
+ * Join a group using an invite code
+ */
+export async function joinGroupByInvite(
+  code: string,
+  walletAddress: string,
+  email: string
+): Promise<{ success: boolean; groupId?: string; error?: string }> {
+  const invite = getInviteByCode(code);
+  if (!invite) {
+    return { success: false, error: 'Invalid invite code' };
+  }
+  
+  // Check if already a member
+  const members = getGroupMembers(invite.groupId);
+  if (members.some(m => m.walletAddress === walletAddress)) {
+    return { success: true, groupId: invite.groupId }; // Already a member
+  }
+  
+  // Add as member
+  const newMember: GroupMember = {
+    groupId: invite.groupId,
+    userId: walletAddress,
+    walletAddress,
+    role: 'member',
+    joinedAt: Date.now(),
+  };
+  
+  const allMembers = getAllMembers();
+  allMembers.push(newMember);
+  localStorage.setItem('mitra_members', JSON.stringify(allMembers));
+  
+  // Also add group to user's groups list if not there
+  const groups = await getGroups(walletAddress);
+  const group = groups.find(g => g.groupId === invite.groupId);
+  if (!group) {
+    // Need to fetch group info from all groups
+    const allGroups = getAllGroupsFromStorage();
+    const targetGroup = allGroups.find(g => g.groupId === invite.groupId);
+    if (targetGroup) {
+      groups.push(targetGroup);
+      saveGroups(groups);
+    }
+  }
+  
+  return { success: true, groupId: invite.groupId };
+}
+
+function getAllGroupsFromStorage(): FriendGroup[] {
+  const stored = localStorage.getItem('mitra_groups');
+  return stored ? JSON.parse(stored) : [];
+}
+
+function getAllMembers(): GroupMember[] {
+  const stored = localStorage.getItem('mitra_members');
+  return stored ? JSON.parse(stored) : [];
+}
+
+/**
+ * Get all members of a group
+ */
+export function getGroupMembers(groupId: string): GroupMember[] {
+  const allMembers = getAllMembers();
+  return allMembers.filter(m => m.groupId === groupId);
+}
+
+/**
+ * Add creator as admin when group is created
+ */
+export function addGroupCreatorAsMember(groupId: string, walletAddress: string): void {
+  const members = getAllMembers();
+  
+  // Check if already exists
+  if (members.some(m => m.groupId === groupId && m.walletAddress === walletAddress)) {
+    return;
+  }
+  
+  members.push({
+    groupId,
+    userId: walletAddress,
+    walletAddress,
+    role: 'admin',
+    joinedAt: Date.now(),
+  });
+  
+  localStorage.setItem('mitra_members', JSON.stringify(members));
+}
+
+/**
+ * Promote a member to admin
+ */
+export function promoteToAdmin(groupId: string, walletAddress: string): boolean {
+  const members = getAllMembers();
+  const idx = members.findIndex(m => m.groupId === groupId && m.walletAddress === walletAddress);
+  
+  if (idx === -1) return false;
+  
+  members[idx].role = 'admin';
+  localStorage.setItem('mitra_members', JSON.stringify(members));
+  return true;
+}
+
+/**
+ * Check if user is admin of a group
+ */
+export function isGroupAdmin(groupId: string, walletAddress: string): boolean {
+  const members = getGroupMembers(groupId);
+  const member = members.find(m => m.walletAddress === walletAddress);
+  return member?.role === 'admin';
 }

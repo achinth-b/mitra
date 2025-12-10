@@ -54,6 +54,7 @@ export interface Bet {
   price: number;
   amountUsdc: number;
   createdAt: number;
+  isPublic: boolean; // If true, visible to other group members
 }
 
 export interface Prices {

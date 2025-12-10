@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth';
-import { createGroup, getGroups, saveGroups } from '@/lib/api';
+import { createGroup, getGroups, saveGroups, addGroupCreatorAsMember } from '@/lib/api';
+import { BRAND } from '@/lib/brand';
 import type { FriendGroup } from '@/types';
 
 export default function DashboardPage() {
@@ -48,12 +49,16 @@ export default function DashboardPage() {
     if (!newGroupName.trim() || !user.walletAddress) return;
 
     setIsCreating(true);
-    
+
     const newGroup = await createGroup(newGroupName, user.walletAddress);
+
+    // Add creator as admin member
+    addGroupCreatorAsMember(newGroup.groupId, user.walletAddress);
+
     const updatedGroups = [...groups, newGroup];
     setGroups(updatedGroups);
     saveGroups(updatedGroups);
-    
+
     setNewGroupName('');
     setShowCreate(false);
     setIsCreating(false);
@@ -93,22 +98,33 @@ export default function DashboardPage() {
 
   return (
     <main className="page-container">
+      {/* Sign out - fixed top left */}
+      <button onClick={handleLogout} className="logout-btn">
+        sign out →
+      </button>
+
       <div className="content">
         {/* Header */}
         <header>
-          <h1>mitra</h1>
-          <p className="tagline">bet on your friends</p>
+          <h1>{BRAND.name}</h1>
+          <p className="tagline">{BRAND.tagline}</p>
         </header>
 
         {/* User Info */}
         <section className="user-section">
           <p className="label">signed in as</p>
           <p className="email">{user.email}</p>
-          
+
           <div className="wallet-box">
             <p className="wallet-label">your solana wallet</p>
-            <p className="wallet-address">{formatWallet(user.walletAddress)}</p>
-            {user.walletAddress && (
+            <p className="wallet-address">
+              {user.walletAddress === 'unavailable'
+                ? 'wallet unavailable'
+                : user.walletAddress
+                  ? formatWallet(user.walletAddress)
+                  : 'loading...'}
+            </p>
+            {user.walletAddress && user.walletAddress !== 'unavailable' && (
               <button
                 onClick={() => navigator.clipboard.writeText(user.walletAddress!)}
                 className="copy-btn"
@@ -117,10 +133,6 @@ export default function DashboardPage() {
               </button>
             )}
           </div>
-
-          <button onClick={handleLogout} className="logout-btn">
-            sign out →
-          </button>
         </section>
 
         {/* Groups Section */}
@@ -280,6 +292,9 @@ export default function DashboardPage() {
         }
 
         .logout-btn {
+          position: fixed;
+          top: clamp(1rem, 3vw, 2rem);
+          left: clamp(1rem, 3vw, 2rem);
           font-size: clamp(0.9rem, 3vw, 1.1rem);
           background: none;
           border: none;
@@ -287,6 +302,7 @@ export default function DashboardPage() {
           opacity: 0.5;
           cursor: pointer;
           transition: opacity 0.2s;
+          z-index: 100;
         }
 
         .logout-btn:hover {

@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth';
+import { BRAND } from '@/lib/brand';
 
 export default function HomePage() {
   const router = useRouter();
@@ -12,7 +13,7 @@ export default function HomePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loginStatus, setLoginStatus] = useState<string | null>(null);
 
-  const isMockMode = !process.env.NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY || 
+  const isMockMode = !process.env.NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY ||
     process.env.NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY.includes('YOUR_KEY_HERE');
 
   useEffect(() => {
@@ -28,10 +29,10 @@ export default function HomePage() {
       }
     };
     const handleFocus = () => silentCheckAuth();
-    
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('focus', handleFocus);
-    
+
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('focus', handleFocus);
@@ -60,9 +61,9 @@ export default function HomePage() {
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) return;
-    
+
     setIsSubmitting(true);
-    
+
     if (isMockMode) {
       setLoginStatus('logging in...');
       const success = await login(email);
@@ -105,7 +106,7 @@ export default function HomePage() {
         <div className="content">
           {!showLogin ? (
             <>
-              <h1>bet on (or against) your friends.</h1>
+              <h1>{BRAND.tagline}</h1>
               <h2>this <em>might</em> ruin your friendships.</h2>
               <p className="coming-soon" onClick={() => setShowLogin(true)} style={{ cursor: 'pointer' }}>
                 enter →
@@ -114,7 +115,7 @@ export default function HomePage() {
           ) : (
             <form onSubmit={handleEmailLogin} className="login-form">
               <h1>sign in</h1>
-              
+
               <input
                 type="email"
                 value={email}
@@ -124,9 +125,9 @@ export default function HomePage() {
                 autoFocus
                 disabled={isSubmitting}
               />
-              
+
               {error && <p className="error-text">{error}</p>}
-              
+
               {loginStatus ? (
                 <p className="coming-soon">{loginStatus}</p>
               ) : (
@@ -134,18 +135,18 @@ export default function HomePage() {
                   continue →
                 </button>
               )}
-              
+
               <p className="hint">
-                {isMockMode 
+                {isMockMode
                   ? 'dev mode — instant login'
                   : isSubmitting
                     ? 'click the link in your email'
                     : 'we\'ll send you a magic link'
                 }
               </p>
-              
+
               <p className="hint-small">a solana wallet will be created for you</p>
-              
+
               {!isSubmitting ? (
                 <button
                   type="button"
@@ -182,22 +183,23 @@ const styles = `
   html {
     height: 100%;
     width: 100%;
+    overflow: hidden;
   }
 
   body {
     background-color: #000000;
     color: #ffffff;
-    font-family: 'EB Garamond', 'Garamond', 'Times New Roman', serif;
+    font-family: inherit;
     display: flex;
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    min-height: 100vh;
-    min-height: 100dvh;
+    height: 100vh;
+    height: 100dvh;
     width: 100vw;
     text-align: center;
     padding: 5vw;
-    overflow-x: hidden;
+    overflow: hidden;
   }
 
   .container {
@@ -205,8 +207,8 @@ const styles = `
     flex-direction: column;
     justify-content: center;
     align-items: center;
-    min-height: 100vh;
-    min-height: 100dvh;
+    height: 100vh;
+    height: 100dvh;
     width: 100vw;
     text-align: center;
     padding: 5vw;

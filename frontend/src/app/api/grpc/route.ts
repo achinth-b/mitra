@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Convert camelCase to snake_case for proto
-    const protoData = JSON.stringify(data);
+    const protoData = JSON.stringify(data ?? {});
     
     // Use grpcurl to call the backend
     const grpcUrl = process.env.GRPC_BACKEND_URL || 'localhost:50051';

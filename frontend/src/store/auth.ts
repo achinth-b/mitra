@@ -2,7 +2,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { getUser, loginWithEmail, logout as magicLogout, getWalletAddress } from '@/lib/magic';
+import { getUser, loginWithEmail, logout as magicLogout, getWalletAddress, restoreMockSession } from '@/lib/magic';
 
 interface UserState {
   email: string | null;
@@ -96,12 +96,15 @@ export const useAuthStore = create<AuthState>()(
       checkAuth: async () => {
         const state = get();
         
-        // If already initialized and logged in, don't show loading
-        if (state.isInitialized && state.user.isLoggedIn) {
+        // If already initialized and logged in with wallet, skip
+        if (state.isInitialized && state.user.isLoggedIn && state.user.walletAddress) {
           return;
         }
         
-        set({ isLoading: true });
+        // Show loading only if not logged in
+        if (!state.user.isLoggedIn) {
+          set({ isLoading: true });
+        }
         
         try {
           const timeoutPromise = new Promise((_, reject) => 
@@ -127,15 +130,32 @@ export const useAuthStore = create<AuthState>()(
               isInitialized: true,
             });
           } else {
-            set({
-              user: {
-                email: null,
-                walletAddress: null,
-                isLoggedIn: false,
-              },
-              isLoading: false,
-              isInitialized: true,
-            });
+            // No user data from Magic - check if we have persisted state
+            const persistedEmail = state.user.email;
+            
+            if (persistedEmail) {
+              // Keep session with unavailable wallet (graceful degradation)
+              set({
+                user: {
+                  email: persistedEmail,
+                  walletAddress: 'unavailable',
+                  isLoggedIn: true,
+                },
+                isLoading: false,
+                isInitialized: true,
+              });
+            } else {
+              // No persisted email - user is logged out
+              set({
+                user: {
+                  email: null,
+                  walletAddress: null,
+                  isLoggedIn: false,
+                },
+                isLoading: false,
+                isInitialized: true,
+              });
+            }
           }
         } catch (error) {
           console.error('Auth check error:', error);
