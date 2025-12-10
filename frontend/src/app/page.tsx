@@ -218,14 +218,14 @@ const styles = `
 
   h1 {
     font-size: clamp(1.2rem, 5vw, 2rem);
-    font-weight: 600;
+    font-weight: normal;
     margin-bottom: clamp(1.5rem, 5vw, 3rem);
     line-height: 1.2;
   }
 
   h2 {
     font-size: clamp(1.2rem, 5vw, 2rem);
-    font-weight: 600;
+    font-weight: normal;
     margin-bottom: clamp(1.5rem, 5vw, 3rem);
     line-height: 1.2;
   }
