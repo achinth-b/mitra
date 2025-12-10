@@ -8,22 +8,30 @@ import type { FriendGroup } from '@/types';
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { user, checkAuth, logout, isLoading: authLoading } = useAuthStore();
+  const { user, checkAuth, logout, isLoading, isInitialized } = useAuthStore();
   const [groups, setGroups] = useState<FriendGroup[]>([]);
   const [showCreate, setShowCreate] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [pageReady, setPageReady] = useState(false);
 
+  // Check auth on mount if not initialized
   useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
-
-  useEffect(() => {
-    if (!user.isLoggedIn && !authLoading) {
-      router.push('/');
+    if (!isInitialized) {
+      checkAuth();
     }
-  }, [user.isLoggedIn, authLoading, router]);
+  }, [checkAuth, isInitialized]);
 
+  // Redirect if not logged in (after initialization)
+  useEffect(() => {
+    if (isInitialized && !user.isLoggedIn) {
+      router.push('/');
+    } else if (isInitialized && user.isLoggedIn) {
+      setPageReady(true);
+    }
+  }, [user.isLoggedIn, isInitialized, router]);
+
+  // Load groups
   useEffect(() => {
     if (user.walletAddress) {
       getGroups(user.walletAddress).then(setGroups);
@@ -51,76 +59,96 @@ export default function DashboardPage() {
     setIsCreating(false);
   };
 
-  if (authLoading) {
+  // Format wallet address for display
+  const formatWallet = (address: string | null) => {
+    if (!address) return '—';
+    if (address.length <= 12) return address;
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+  };
+
+  // Show loading only during initial load
+  if ((isLoading && !isInitialized) || !pageReady) {
     return (
-      <main className="min-h-screen flex items-center justify-center">
-        <p className="text-2xl text-white/40 italic">loading...</p>
+      <main className="page-container">
+        <p className="loading">loading...</p>
+        <style jsx>{`
+          .page-container {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            min-height: 100dvh;
+            padding: 5vw;
+          }
+          .loading {
+            font-size: clamp(1.2rem, 5vw, 2rem);
+            font-style: italic;
+            opacity: 0.9;
+          }
+        `}</style>
       </main>
     );
   }
 
-  if (!user.isLoggedIn) {
-    return null;
-  }
-
   return (
-    <main className="min-h-screen px-8 py-16 md:py-24">
-      <div className="max-w-3xl mx-auto">
+    <main className="page-container">
+      <div className="content">
         {/* Header */}
-        <header className="flex items-start justify-between mb-20">
-          <div>
-            <h1 className="text-4xl md:text-5xl mb-4">mitra</h1>
-            <p className="text-xl text-white/40">bet on your friends</p>
-          </div>
-          <button
-            onClick={handleLogout}
-            className="text-xl text-white/40 hover:text-white transition-opacity"
-          >
-            sign out
-          </button>
+        <header>
+          <h1>mitra</h1>
+          <p className="tagline">bet on your friends</p>
         </header>
 
         {/* User Info */}
-        <section className="mb-16 pb-16 border-b border-white/10">
-          <p className="text-white/40 text-xl mb-2">signed in as</p>
-          <p className="text-2xl md:text-3xl mb-6">{user.email}</p>
+        <section className="user-section">
+          <p className="label">signed in as</p>
+          <p className="email">{user.email}</p>
           
-          <p className="text-white/40 text-lg mb-2">your solana wallet</p>
-          <p className="text-lg font-mono text-white/60 break-all">
-            {user.walletAddress}
-          </p>
+          <div className="wallet-box">
+            <p className="wallet-label">your solana wallet</p>
+            <p className="wallet-address">{formatWallet(user.walletAddress)}</p>
+            {user.walletAddress && (
+              <button
+                onClick={() => navigator.clipboard.writeText(user.walletAddress!)}
+                className="copy-btn"
+              >
+                copy full address
+              </button>
+            )}
+          </div>
+
+          <button onClick={handleLogout} className="logout-btn">
+            sign out →
+          </button>
         </section>
 
         {/* Groups Section */}
-        <section>
-          <div className="flex items-center justify-between mb-12">
-            <h2 className="text-3xl md:text-4xl">your groups</h2>
-            {!showCreate && (
-              <button
-                onClick={() => setShowCreate(true)}
-                className="text-xl text-white/40 hover:text-white transition-opacity"
-              >
-                + new group
+        <section className="groups-section">
+          <div className="section-header">
+            <h2>your groups</h2>
+            {!showCreate && groups.length > 0 && (
+              <button onClick={() => setShowCreate(true)} className="new-btn">
+                + new
               </button>
             )}
           </div>
 
           {/* Create Group Form */}
           {showCreate && (
-            <form onSubmit={handleCreateGroup} className="mb-12 pb-12 border-b border-white/10">
+            <form onSubmit={handleCreateGroup} className="create-form">
               <input
                 type="text"
                 value={newGroupName}
                 onChange={(e) => setNewGroupName(e.target.value)}
                 placeholder="group name"
-                className="w-full text-2xl md:text-3xl py-4 border-b border-white/30 focus:border-white/70 transition-colors mb-8 bg-transparent"
                 autoFocus
               />
-              <div className="flex gap-8">
+              <div className="form-actions">
                 <button
                   type="submit"
                   disabled={!newGroupName.trim() || isCreating}
-                  className="text-xl text-white/60 hover:text-white transition-opacity disabled:text-white/30"
+                  className="submit-btn"
                 >
                   {isCreating ? 'creating...' : 'create →'}
                 </button>
@@ -130,7 +158,7 @@ export default function DashboardPage() {
                     setShowCreate(false);
                     setNewGroupName('');
                   }}
-                  className="text-xl text-white/30 hover:text-white/60 transition-opacity"
+                  className="cancel-btn"
                 >
                   cancel
                 </button>
@@ -140,36 +168,293 @@ export default function DashboardPage() {
 
           {/* Groups List */}
           {groups.length > 0 ? (
-            <ul className="space-y-2">
+            <ul className="groups-list">
               {groups.map((group) => (
                 <li key={group.groupId}>
                   <button
                     onClick={() => router.push(`/group/${group.groupId}`)}
-                    className="w-full text-left py-8 border-b border-white/10 hover:border-white/30 transition-colors group flex items-center justify-between"
+                    className="group-item"
                   >
-                    <span className="text-2xl md:text-3xl group-hover:text-white/80 transition-opacity">
-                      {group.name}
-                    </span>
-                    <span className="text-white/30 text-3xl group-hover:text-white/60 transition-opacity">→</span>
+                    {group.name}
                   </button>
                 </li>
               ))}
             </ul>
           ) : !showCreate ? (
-            <div className="text-center py-20">
-              <p className="text-2xl text-white/40 italic mb-10">
-                no groups yet.
-              </p>
-              <button
-                onClick={() => setShowCreate(true)}
-                className="text-2xl text-white/60 hover:text-white transition-opacity"
-              >
+            <div className="empty-state">
+              <p className="empty-text">no groups yet.</p>
+              <p className="empty-hint">create a group to start betting with friends</p>
+              <button onClick={() => setShowCreate(true)} className="create-first-btn">
                 create your first group →
               </button>
             </div>
           ) : null}
         </section>
       </div>
+
+      <style jsx>{`
+        .page-container {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          min-height: 100vh;
+          min-height: 100dvh;
+          padding: clamp(2rem, 5vw, 4rem);
+          padding-top: clamp(3rem, 8vw, 6rem);
+        }
+
+        .content {
+          max-width: 600px;
+          width: 100%;
+          text-align: center;
+        }
+
+        header {
+          margin-bottom: clamp(3rem, 8vw, 5rem);
+        }
+
+        h1 {
+          font-size: clamp(2rem, 8vw, 3rem);
+          font-weight: normal;
+          margin-bottom: clamp(0.5rem, 2vw, 1rem);
+        }
+
+        .tagline {
+          font-size: clamp(1rem, 4vw, 1.3rem);
+          font-style: italic;
+          opacity: 0.7;
+        }
+
+        .user-section {
+          padding: clamp(2rem, 5vw, 3rem) 0;
+          border-top: 1px solid rgba(255, 255, 255, 0.15);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+          margin-bottom: clamp(2rem, 5vw, 3rem);
+        }
+
+        .label {
+          font-size: clamp(0.9rem, 3vw, 1.1rem);
+          opacity: 0.6;
+          margin-bottom: clamp(0.3rem, 1vw, 0.5rem);
+        }
+
+        .email {
+          font-size: clamp(1.2rem, 5vw, 1.8rem);
+          margin-bottom: clamp(1.5rem, 4vw, 2rem);
+        }
+
+        .wallet-box {
+          display: inline-block;
+          padding: clamp(1rem, 3vw, 1.5rem);
+          background: rgba(255, 255, 255, 0.05);
+          border-radius: 8px;
+          margin-bottom: clamp(1.5rem, 4vw, 2rem);
+        }
+
+        .wallet-label {
+          font-size: clamp(0.8rem, 2.5vw, 0.95rem);
+          opacity: 0.6;
+          margin-bottom: clamp(0.3rem, 1vw, 0.5rem);
+        }
+
+        .wallet-address {
+          font-size: clamp(1rem, 3.5vw, 1.2rem);
+          font-family: 'SF Mono', 'Monaco', monospace;
+          letter-spacing: 0;
+        }
+
+        .copy-btn {
+          display: block;
+          margin-top: clamp(0.5rem, 1.5vw, 0.75rem);
+          font-size: clamp(0.75rem, 2.5vw, 0.9rem);
+          background: none;
+          border: none;
+          color: white;
+          opacity: 0.5;
+          cursor: pointer;
+          transition: opacity 0.2s;
+        }
+
+        .copy-btn:hover {
+          opacity: 0.8;
+        }
+
+        .logout-btn {
+          font-size: clamp(0.9rem, 3vw, 1.1rem);
+          background: none;
+          border: none;
+          color: white;
+          opacity: 0.5;
+          cursor: pointer;
+          transition: opacity 0.2s;
+        }
+
+        .logout-btn:hover {
+          opacity: 0.8;
+        }
+
+        .groups-section {
+          text-align: center;
+        }
+
+        .section-header {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: clamp(1rem, 3vw, 2rem);
+          margin-bottom: clamp(1.5rem, 4vw, 2rem);
+        }
+
+        h2 {
+          font-size: clamp(1.3rem, 5vw, 2rem);
+          font-weight: normal;
+        }
+
+        .new-btn {
+          font-size: clamp(0.9rem, 3vw, 1.1rem);
+          background: none;
+          border: none;
+          color: white;
+          opacity: 0.6;
+          cursor: pointer;
+          transition: opacity 0.2s;
+        }
+
+        .new-btn:hover {
+          opacity: 1;
+        }
+
+        .create-form {
+          margin-bottom: clamp(2rem, 5vw, 3rem);
+        }
+
+        .create-form input {
+          font-size: clamp(1.1rem, 4vw, 1.5rem);
+          padding: clamp(0.75rem, 2vw, 1rem);
+          width: 100%;
+          max-width: 350px;
+          text-align: center;
+          background: transparent;
+          border: none;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.4);
+          color: white;
+          margin-bottom: clamp(1rem, 3vw, 1.5rem);
+        }
+
+        .create-form input:focus {
+          outline: none;
+          border-bottom-color: rgba(255, 255, 255, 0.8);
+        }
+
+        .create-form input::placeholder {
+          color: rgba(255, 255, 255, 0.5);
+          font-style: italic;
+        }
+
+        .form-actions {
+          display: flex;
+          justify-content: center;
+          gap: clamp(1.5rem, 4vw, 2rem);
+        }
+
+        .submit-btn {
+          font-size: clamp(1rem, 3.5vw, 1.2rem);
+          background: none;
+          border: none;
+          color: white;
+          opacity: 0.8;
+          cursor: pointer;
+          transition: opacity 0.2s;
+        }
+
+        .submit-btn:hover {
+          opacity: 1;
+        }
+
+        .submit-btn:disabled {
+          opacity: 0.3;
+          cursor: not-allowed;
+        }
+
+        .cancel-btn {
+          font-size: clamp(1rem, 3.5vw, 1.2rem);
+          background: none;
+          border: none;
+          color: white;
+          opacity: 0.5;
+          cursor: pointer;
+          transition: opacity 0.2s;
+        }
+
+        .cancel-btn:hover {
+          opacity: 0.8;
+        }
+
+        .groups-list {
+          list-style: none;
+          padding: 0;
+        }
+
+        .groups-list li {
+          margin-bottom: clamp(0.5rem, 1.5vw, 0.75rem);
+        }
+
+        .group-item {
+          width: 100%;
+          font-size: clamp(1.1rem, 4vw, 1.5rem);
+          padding: clamp(1rem, 3vw, 1.5rem);
+          background: none;
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 8px;
+          color: white;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .group-item:hover {
+          border-color: rgba(255, 255, 255, 0.4);
+          background: rgba(255, 255, 255, 0.03);
+        }
+
+        .empty-state {
+          padding: clamp(2rem, 6vw, 4rem) 0;
+        }
+
+        .empty-text {
+          font-size: clamp(1.2rem, 5vw, 1.8rem);
+          font-style: italic;
+          opacity: 0.6;
+          margin-bottom: clamp(1rem, 3vw, 1.5rem);
+        }
+
+        .empty-hint {
+          font-size: clamp(0.9rem, 3vw, 1.1rem);
+          opacity: 0.5;
+          margin-bottom: clamp(1.5rem, 4vw, 2rem);
+        }
+
+        .create-first-btn {
+          font-size: clamp(1.1rem, 4vw, 1.4rem);
+          font-style: italic;
+          background: none;
+          border: none;
+          color: white;
+          opacity: 0.8;
+          cursor: pointer;
+          transition: opacity 0.2s;
+        }
+
+        .create-first-btn:hover {
+          opacity: 1;
+        }
+
+        @media (max-width: 767px) {
+          .page-container {
+            padding: 4vw;
+            padding-top: 8vw;
+          }
+        }
+      `}</style>
     </main>
   );
 }

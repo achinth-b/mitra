@@ -13,12 +13,14 @@ interface UserState {
 interface AuthState {
   user: UserState;
   isLoading: boolean;
+  isInitialized: boolean; // Track if we've done the initial auth check
   error: string | null;
   
   // Actions
   login: (email: string) => Promise<boolean>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
+  silentCheckAuth: () => Promise<void>; // Check without showing loading
   setUser: (user: UserState) => void;
   clearError: () => void;
 }
@@ -31,20 +33,22 @@ export const useAuthStore = create<AuthState>()(
         walletAddress: null,
         isLoggedIn: false,
       },
-      isLoading: false,
+      isLoading: true, // Start as loading
+      isInitialized: false,
       error: null,
 
       login: async (email: string) => {
-        set({ isLoading: true, error: null });
+        set({ error: null });
         
         try {
+          // loginWithMagicLink is a blocking call that waits for email verification
           const didToken = await loginWithEmail(email);
           
           if (!didToken) {
-            set({ error: 'Login failed. Please try again.', isLoading: false });
             return false;
           }
 
+          // Successfully authenticated - get wallet address
           const walletAddress = await getWalletAddress();
           
           set({
@@ -53,45 +57,55 @@ export const useAuthStore = create<AuthState>()(
               walletAddress,
               isLoggedIn: true,
             },
-            isLoading: false,
+            isInitialized: true,
           });
           
           return true;
         } catch (error) {
-          set({ 
-            error: error instanceof Error ? error.message : 'Login failed',
-            isLoading: false 
-          });
+          console.error('Login error:', error);
+          const errorMessage = error instanceof Error ? error.message : 'Login failed';
+          if (!errorMessage.includes('cancelled') && !errorMessage.includes('closed')) {
+            set({ error: errorMessage });
+          }
           return false;
         }
       },
 
       logout: async () => {
-        set({ isLoading: true });
-        
         try {
           await magicLogout();
-          set({
-            user: {
-              email: null,
-              walletAddress: null,
-              isLoggedIn: false,
-            },
-            isLoading: false,
-          });
         } catch (error) {
           console.error('Logout error:', error);
-          set({ isLoading: false });
         }
+        
+        // Always clear state
+        localStorage.removeItem('mitra-auth');
+        localStorage.removeItem('mock_user');
+        
+        set({
+          user: {
+            email: null,
+            walletAddress: null,
+            isLoggedIn: false,
+          },
+          isInitialized: true,
+        });
       },
 
+      // Initial auth check - shows loading state
       checkAuth: async () => {
+        const state = get();
+        
+        // If already initialized and logged in, don't show loading
+        if (state.isInitialized && state.user.isLoggedIn) {
+          return;
+        }
+        
         set({ isLoading: true });
         
         try {
-          // Add timeout to prevent hanging
           const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Auth check timeout')), 3000)
+            setTimeout(() => reject(new Error('timeout')), 3000)
           );
           
           const userData = await Promise.race([
@@ -100,13 +114,17 @@ export const useAuthStore = create<AuthState>()(
           ]).catch(() => null);
           
           if (userData && typeof userData === 'object' && 'email' in userData) {
+            const email = (userData as Record<string, unknown>).email as string | null;
+            const publicAddress = (userData as Record<string, unknown>).publicAddress as string | null;
+            
             set({
               user: {
-                email: (userData as any).email || null,
-                walletAddress: (userData as any).publicAddress || null,
+                email: email || null,
+                walletAddress: publicAddress || null,
                 isLoggedIn: true,
               },
               isLoading: false,
+              isInitialized: true,
             });
           } else {
             set({
@@ -116,29 +134,51 @@ export const useAuthStore = create<AuthState>()(
                 isLoggedIn: false,
               },
               isLoading: false,
+              isInitialized: true,
             });
           }
         } catch (error) {
           console.error('Auth check error:', error);
-          set({
-            user: {
-              email: null,
-              walletAddress: null,
-              isLoggedIn: false,
-            },
-            isLoading: false,
-          });
+          set({ isLoading: false, isInitialized: true });
         }
       },
 
-      setUser: (user: UserState) => set({ user, isLoading: false }),
+      // Silent auth check - doesn't show loading (for background refreshes)
+      silentCheckAuth: async () => {
+        try {
+          const userData = await Promise.race([
+            getUser(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
+          ]).catch(() => null);
+          
+          if (userData && typeof userData === 'object' && 'email' in userData) {
+            const email = (userData as Record<string, unknown>).email as string | null;
+            const publicAddress = (userData as Record<string, unknown>).publicAddress as string | null;
+            
+            set({
+              user: {
+                email: email || null,
+                walletAddress: publicAddress || null,
+                isLoggedIn: true,
+              },
+              isInitialized: true,
+            });
+          }
+        } catch {
+          // Silent fail for background checks
+        }
+      },
+
+      setUser: (user: UserState) => set({ user, isLoading: false, isInitialized: true }),
       
       clearError: () => set({ error: null }),
     }),
     {
       name: 'mitra-auth',
-      partialize: (state) => ({ user: state.user }),
+      partialize: (state) => ({ 
+        user: state.user,
+        isInitialized: state.isInitialized,
+      }),
     }
   )
 );
-

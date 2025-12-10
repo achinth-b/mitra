@@ -1,144 +1,342 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth';
 
 export default function HomePage() {
   const router = useRouter();
-  const { user, checkAuth, isLoading, login, error } = useAuthStore();
+  const { user, checkAuth, silentCheckAuth, isLoading, isInitialized, login, error } = useAuthStore();
   const [showLogin, setShowLogin] = useState(false);
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loginStatus, setLoginStatus] = useState<string | null>(null);
 
-  // Check if Magic.link is configured
   const isMockMode = !process.env.NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY || 
     process.env.NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY.includes('YOUR_KEY_HERE');
 
   useEffect(() => {
-    checkAuth();
-  }, [checkAuth]);
+    if (!isInitialized) {
+      checkAuth();
+    }
+  }, [checkAuth, isInitialized]);
 
   useEffect(() => {
-    if (user.isLoggedIn && !isLoading) {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        silentCheckAuth();
+      }
+    };
+    const handleFocus = () => silentCheckAuth();
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [silentCheckAuth]);
+
+  useEffect(() => {
+    if (user.isLoggedIn && isInitialized) {
       router.push('/dashboard');
     }
-  }, [user.isLoggedIn, isLoading, router]);
+  }, [user.isLoggedIn, isInitialized, router]);
+
+  const pollForAuth = useCallback(async () => {
+    if (isMockMode) return;
+    const interval = setInterval(() => silentCheckAuth(), 2000);
+    setTimeout(() => {
+      clearInterval(interval);
+      if (!user.isLoggedIn) {
+        setLoginStatus(null);
+        setIsSubmitting(false);
+      }
+    }, 5 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [silentCheckAuth, isMockMode, user.isLoggedIn]);
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email) return;
     
     setIsSubmitting(true);
-    setLoginStatus(isMockMode ? 'logging in (dev mode)...' : 'sending magic link...');
     
-    const success = await login(email);
-    
-    if (success) {
-      setLoginStatus('success! redirecting...');
-      // Small delay to show success message
-      setTimeout(() => {
-        router.push('/dashboard');
-      }, 500);
+    if (isMockMode) {
+      setLoginStatus('logging in...');
+      const success = await login(email);
+      if (success) {
+        setLoginStatus('success!');
+        setTimeout(() => router.push('/dashboard'), 500);
+      } else {
+        setLoginStatus(null);
+        setIsSubmitting(false);
+      }
     } else {
-      setLoginStatus(null);
-      setIsSubmitting(false);
+      setLoginStatus('sending magic link...');
+      pollForAuth();
+      const success = await login(email);
+      if (success) {
+        setLoginStatus('success!');
+        setTimeout(() => router.push('/dashboard'), 500);
+      } else if (document.visibilityState === 'visible') {
+        setLoginStatus('check your email');
+      }
     }
   };
 
-  if (isLoading) {
+  if (isLoading && !isInitialized) {
     return (
-      <main className="min-h-screen flex items-center justify-center">
-        <p className="text-2xl text-white/40 italic">loading...</p>
-      </main>
+      <>
+        <div className="container">
+          <div className="content">
+            <p className="coming-soon">loading...</p>
+          </div>
+        </div>
+        <style jsx global>{styles}</style>
+      </>
     );
   }
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center px-8">
-      <div className="text-center w-full max-w-xl">
-        
-        {/* Landing */}
-        {!showLogin && (
-          <>
-            <h1 className="text-4xl md:text-6xl lg:text-7xl font-normal tracking-wide mb-12 leading-tight">
-              bet on (or against) your friends.
-            </h1>
-            
-            <p className="text-2xl md:text-3xl lg:text-4xl mb-20">
-              this <em>might</em> ruin your friendships.
-            </p>
-            
-            <button
-              onClick={() => setShowLogin(true)}
-              className="text-2xl md:text-3xl italic text-white/60 hover:text-white transition-opacity duration-300"
-            >
-              enter →
-            </button>
-          </>
-        )}
-
-        {/* Login */}
-        {showLogin && (
-          <form onSubmit={handleEmailLogin} className="w-full">
-            <h2 className="text-3xl md:text-4xl lg:text-5xl mb-16">sign in</h2>
-            
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="your email"
-              className="w-full text-center text-2xl md:text-3xl py-6 border-b border-white/30 focus:border-white/70 transition-colors duration-300 bg-transparent mb-10"
-              autoFocus
-              disabled={isSubmitting}
-            />
-            
-            {error && (
-              <p className="text-xl text-red-400/80 mb-8">{error}</p>
-            )}
-            
-            {loginStatus && (
-              <p className="text-xl text-white/60 mb-8 italic">{loginStatus}</p>
-            )}
-            
-            {!loginStatus && (
-              <button
-                type="submit"
-                disabled={!email || isSubmitting}
-                className="text-2xl md:text-3xl italic text-white/60 hover:text-white transition-opacity duration-300 disabled:text-white/30 disabled:cursor-not-allowed"
-              >
-                continue →
-              </button>
-            )}
-            
-            <p className="mt-12 text-xl text-white/40">
-              {isMockMode 
-                ? 'dev mode: instant login, no email sent.'
-                : 'we\'ll send you a magic link.'
-              }
-            </p>
-            
-            <p className="mt-4 text-lg text-white/30">
-              a solana wallet will be created for you.
-            </p>
-            
-            {!isSubmitting && (
-              <button
-                type="button"
-                onClick={() => {
-                  setShowLogin(false);
-                  setLoginStatus(null);
-                  setEmail('');
-                }}
-                className="mt-12 text-xl text-white/30 hover:text-white/60 transition-opacity"
-              >
-                ← back
-              </button>
-            )}
-          </form>
-        )}
+    <>
+      <div className="container">
+        <div className="content">
+          {!showLogin ? (
+            <>
+              <h1>bet on (or against) your friends.</h1>
+              <h2>this <em>might</em> ruin your friendships.</h2>
+              <p className="coming-soon" onClick={() => setShowLogin(true)} style={{ cursor: 'pointer' }}>
+                enter →
+              </p>
+            </>
+          ) : (
+            <form onSubmit={handleEmailLogin} className="login-form">
+              <h1>sign in</h1>
+              
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="your email"
+                className="email-input"
+                autoFocus
+                disabled={isSubmitting}
+              />
+              
+              {error && <p className="error-text">{error}</p>}
+              
+              {loginStatus ? (
+                <p className="coming-soon">{loginStatus}</p>
+              ) : (
+                <button type="submit" disabled={!email || isSubmitting} className="coming-soon submit-btn">
+                  continue →
+                </button>
+              )}
+              
+              <p className="hint">
+                {isMockMode 
+                  ? 'dev mode — instant login'
+                  : isSubmitting
+                    ? 'click the link in your email'
+                    : 'we\'ll send you a magic link'
+                }
+              </p>
+              
+              <p className="hint-small">a solana wallet will be created for you</p>
+              
+              {!isSubmitting ? (
+                <button
+                  type="button"
+                  onClick={() => { setShowLogin(false); setLoginStatus(null); setEmail(''); }}
+                  className="back-link"
+                >
+                  ← back
+                </button>
+              ) : !isMockMode && (
+                <button
+                  type="button"
+                  onClick={() => { setIsSubmitting(false); setLoginStatus(null); }}
+                  className="back-link"
+                >
+                  cancel
+                </button>
+              )}
+            </form>
+          )}
+        </div>
       </div>
-    </main>
+      <style jsx global>{styles}</style>
+    </>
   );
 }
+
+const styles = `
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html {
+    height: 100%;
+    width: 100%;
+  }
+
+  body {
+    background-color: #000000;
+    color: #ffffff;
+    font-family: 'EB Garamond', 'Garamond', 'Times New Roman', serif;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    min-height: 100dvh;
+    width: 100vw;
+    text-align: center;
+    padding: 5vw;
+    overflow-x: hidden;
+  }
+
+  .container {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    min-height: 100dvh;
+    width: 100vw;
+    text-align: center;
+    padding: 5vw;
+  }
+
+  .content {
+    max-width: 90vw;
+    width: 100%;
+  }
+
+  h1 {
+    font-size: clamp(1.2rem, 5vw, 2rem);
+    font-weight: normal;
+    margin-bottom: clamp(1.5rem, 5vw, 3rem);
+    line-height: 1.2;
+  }
+
+  h2 {
+    font-size: clamp(1.2rem, 5vw, 2rem);
+    font-weight: normal;
+    margin-bottom: clamp(1.5rem, 5vw, 3rem);
+    line-height: 1.2;
+  }
+
+  .coming-soon {
+    font-size: clamp(1.2rem, 5vw, 2rem);
+    font-style: italic;
+    margin-top: clamp(2rem, 6vw, 4rem);
+    opacity: 0.9;
+  }
+
+  .submit-btn {
+    background: none;
+    border: none;
+    color: white;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  .submit-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .login-form {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .email-input {
+    font-size: clamp(1rem, 4vw, 1.5rem);
+    font-family: inherit;
+    padding: clamp(0.5rem, 2vw, 1rem);
+    width: 100%;
+    max-width: 400px;
+    text-align: center;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    margin-bottom: 0;
+  }
+
+  .email-input:focus {
+    outline: none;
+    border-bottom-color: rgba(255, 255, 255, 0.6);
+  }
+
+  .email-input::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+    font-style: italic;
+  }
+
+  .error-text {
+    font-size: clamp(0.9rem, 3vw, 1.1rem);
+    color: #ff6b6b;
+    margin-top: clamp(1rem, 3vw, 1.5rem);
+  }
+
+  .hint {
+    font-size: clamp(0.9rem, 3vw, 1.1rem);
+    opacity: 0.6;
+    margin-top: clamp(2rem, 5vw, 3rem);
+  }
+
+  .hint-small {
+    font-size: clamp(0.8rem, 2.5vw, 1rem);
+    opacity: 0.4;
+    margin-top: clamp(0.5rem, 1.5vw, 1rem);
+  }
+
+  .back-link {
+    font-size: clamp(0.9rem, 3vw, 1.1rem);
+    background: none;
+    border: none;
+    color: white;
+    opacity: 0.4;
+    cursor: pointer;
+    margin-top: clamp(2rem, 5vw, 3rem);
+    font-family: inherit;
+  }
+
+  .back-link:hover {
+    opacity: 0.7;
+  }
+
+  /* Tablet specific adjustments */
+  @media (min-width: 768px) and (max-width: 1024px) {
+    h1, h2 {
+      font-size: clamp(1.5rem, 4vw, 1.8rem);
+    }
+
+    .coming-soon {
+      font-size: clamp(1.5rem, 4vw, 1.8rem);
+    }
+  }
+
+  /* Mobile specific adjustments */
+  @media (max-width: 767px) {
+    body, .container {
+      padding: 4vw;
+    }
+
+    h1, h2 {
+      font-size: clamp(1.2rem, 6vw, 1.6rem);
+    }
+
+    .coming-soon {
+      font-size: clamp(1.2rem, 6vw, 1.6rem);
+    }
+  }
+`;
