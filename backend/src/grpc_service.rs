@@ -32,6 +32,7 @@ use proto::{
     CreateGroupRequest, GroupResponse, InviteMemberRequest, MemberResponse,
     CreateEventRequest, EventResponse, PlaceBetRequest, BetResponse,
     GetPricesRequest, PricesResponse, SettleEventRequest, SettleResponse,
+    DeleteEventRequest, DeleteEventResponse,
     DepositRequest, DepositResponse, WithdrawRequest, WithdrawResponse,
     BalanceRequest, BalanceResponse, ClaimRequest, ClaimResponse,
 };
@@ -254,6 +255,19 @@ impl MitraService for MitraGrpcService {
         let outcomes_json = serde_json::to_value(&req.outcomes)
             .map_err(|e| Status::internal(format!("Serialization error: {}", e)))?;
 
+        // Generate a random Solana keypair for the event account
+        // In a real implementation this would be derived or input from the client
+        // after the client creates the account on-chain
+        let event_keypair = anchor_client::solana_sdk::signature::Keypair::new();
+        let solana_pubkey = anchor_client::solana_sdk::signer::Signer::pubkey(&event_keypair).to_string();
+
+        // Validate arbiter if settlement type is manual
+        let arbiter_wallet = if req.settlement_type == "manual" && !req.arbiter_wallet.is_empty() {
+             Some(req.arbiter_wallet.as_str())
+        } else {
+             None
+        };
+
         let event = self
             .app_state
             .event_repo
@@ -264,6 +278,8 @@ impl MitraService for MitraGrpcService {
                 &outcomes_json,
                 &req.settlement_type,
                 resolve_by,
+                Some(&solana_pubkey),
+                arbiter_wallet,
             )
             .await
             .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
@@ -284,6 +300,7 @@ impl MitraService for MitraGrpcService {
             status: event.status,
             resolve_by: event.resolve_by.map(|dt| dt.and_utc().timestamp()).unwrap_or(0),
             created_at: event.created_at.and_utc().timestamp(),
+            arbiter_wallet: event.arbiter_wallet.unwrap_or_default(),
         }))
     }
 
@@ -670,6 +687,77 @@ impl MitraService for MitraGrpcService {
             winning_outcome: req.winning_outcome,
             settled_at: chrono::Utc::now().timestamp(),
             solana_tx_signature: tx_signature,
+        }))
+    }
+
+    /// Delete an event
+    async fn delete_event(
+        &self,
+        request: Request<DeleteEventRequest>,
+    ) -> Result<Response<DeleteEventResponse>, Status> {
+        let req = request.into_inner();
+        let event_id = Self::parse_uuid(&req.event_id, "event_id")?;
+        
+        info!("DeleteEvent request: event={}, deleter={}", event_id, req.deleter_wallet);
+
+        // Verify signature
+        auth::verify_auth_with_timestamp(
+            &req.deleter_wallet,
+            "delete_event",
+            chrono::Utc::now().timestamp(),
+            &req.signature,
+        )
+        .map_err(Self::to_status)?;
+
+        // Get event to check permissions
+        let event = self
+            .app_state
+            .event_repo
+            .find_by_id(event_id)
+            .await
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?
+            .ok_or_else(|| Status::not_found(format!("Event {} not found", event_id)))?;
+
+        // Verify deleter is admin or creator
+        let deleter_user = self
+            .app_state
+            .user_repo
+            .find_or_create_by_wallet(&req.deleter_wallet)
+            .await
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+
+        // Check if admin
+        let role = self
+            .app_state
+            .group_member_repo
+            .find_role(event.group_id, deleter_user.id)
+            .await
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+
+        // Allow deletion if admin OR if it's the creator (and no bets placed yet ideally, but keeping simple)
+        // For now, strict: only admins can delete
+        match role {
+            Some(crate::models::MemberRole::Admin) => {}
+            _ => return Err(Status::permission_denied("Only group admins can delete events")),
+        }
+
+        // Determine success
+        let success = self
+            .app_state
+            .event_repo
+            .delete(event_id)
+            .await
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+
+        if success {
+            info!("Deleted event: {}", event_id);
+        } else {
+            return Err(Status::not_found("Event not found or could not be deleted"));
+        }
+
+        Ok(Response::new(DeleteEventResponse {
+            success,
+            event_id: event_id.to_string(),
         }))
     }
 

@@ -89,6 +89,7 @@ pub struct CreateEventRequest {
     pub settlement_type: String,
     pub resolve_by: i64,
     pub creator_wallet: String,
+    pub arbiter_wallet: String,
     pub signature: String,
 }
 
@@ -102,6 +103,7 @@ pub struct EventResponse {
     pub outcomes: Vec<String>,
     pub settlement_type: String,
     pub status: String,
+    pub arbiter_wallet: String,
     pub resolve_by: i64,
     pub created_at: i64,
 }
@@ -145,6 +147,19 @@ pub struct SettleEventRequest {
 }
 
 #[derive(Clone, Debug, Default)]
+pub struct DeleteEventRequest {
+    pub event_id: String,
+    pub deleter_wallet: String,
+    pub signature: String,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct DeleteEventResponse {
+    pub success: bool,
+    pub event_id: String,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct SettleResponse {
     pub event_id: String,
     pub winning_outcome: String,
@@ -161,6 +176,7 @@ pub trait MitraService: Send + Sync + 'static {
     async fn place_bet(&self, request: tonic::Request<PlaceBetRequest>) -> Result<tonic::Response<BetResponse>, tonic::Status>;
     async fn get_event_prices(&self, request: tonic::Request<GetPricesRequest>) -> Result<tonic::Response<PricesResponse>, tonic::Status>;
     async fn settle_event(&self, request: tonic::Request<SettleEventRequest>) -> Result<tonic::Response<SettleResponse>, tonic::Status>;
+    async fn delete_event(&self, request: tonic::Request<DeleteEventRequest>) -> Result<tonic::Response<DeleteEventResponse>, tonic::Status>;
 }
 
 pub mod mitra_service_server {

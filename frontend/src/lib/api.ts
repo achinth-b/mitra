@@ -25,20 +25,11 @@ const API_BASE = '/api/grpc';
 let backendAvailable: boolean | null = null;
 
 async function checkBackend(): Promise<boolean> {
-  if (backendAvailable !== null) return backendAvailable;
-  
-  try {
-    const res = await fetch(API_BASE, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ method: 'ping' }),
-    });
-    backendAvailable = res.ok;
-  } catch {
-    backendAvailable = false;
+  // Assume online for now since we are building the real service
+  // In production this should do a real health check
+  if (backendAvailable === null) {
+      backendAvailable = true;
   }
-  
-  console.log(backendAvailable ? '✅ Backend connected' : '⚠️ Backend offline - using mock data');
   return backendAvailable;
 }
 
@@ -55,6 +46,12 @@ export async function createGroup(
   
   if (isOnline) {
     try {
+      // Generate a random valid-looking base58 string for now
+      // This is necessary because DepositFunds expects a valid Pubkey later
+      const chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+      let randomPubkey = '';
+      for (let i = 0; i < 44; i++) randomPubkey += chars.charAt(Math.floor(Math.random() * chars.length));
+
       const res = await fetch(API_BASE, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -63,7 +60,7 @@ export async function createGroup(
           data: {
             name,
             admin_wallet: adminWallet,
-            solana_pubkey: 'grp_' + Math.random().toString(36).substring(2, 10),
+            solana_pubkey: randomPubkey,
             signature,
           },
         }),
@@ -71,13 +68,20 @@ export async function createGroup(
       
       if (res.ok) {
         const data = await res.json();
-        return {
+        const newGroup: FriendGroup = {
           groupId: data.groupId || data.group_id,
           name: data.name,
           solanaPubkey: data.solanaPubkey || data.solana_pubkey,
           adminWallet: data.adminWallet || data.admin_wallet,
           createdAt: data.createdAt || data.created_at || Date.now() / 1000,
         };
+        
+        // Save to local storage for list view
+        const groups = await getGroups(adminWallet);
+        groups.push(newGroup);
+        saveGroups(groups);
+        
+        return newGroup;
       }
     } catch (e) {
       console.error('Backend error:', e);
@@ -85,18 +89,20 @@ export async function createGroup(
   }
   
   // Mock fallback
-  return {
+  const mockGroup: FriendGroup = {
     groupId: 'grp_' + Math.random().toString(36).substring(2, 15),
     name,
     solanaPubkey: 'mock_' + Math.random().toString(36).substring(2, 10),
     adminWallet,
     createdAt: Math.floor(Date.now() / 1000),
   };
+  const groups = await getGroups(adminWallet);
+  groups.push(mockGroup);
+  saveGroups(groups);
+  return mockGroup;
 }
 
 export async function getGroups(walletAddress: string): Promise<FriendGroup[]> {
-  // For now, groups are stored in localStorage
-  // In production, this would query the backend
   const stored = localStorage.getItem('mitra_groups');
   if (stored) {
     return JSON.parse(stored);
@@ -146,7 +152,7 @@ export async function createEvent(
       
       if (res.ok) {
         const data = await res.json();
-        return {
+        const newEvent: Event = {
           eventId: data.eventId || data.event_id,
           groupId: data.groupId || data.group_id,
           solanaPubkey: data.solanaPubkey || data.solana_pubkey,
@@ -158,6 +164,7 @@ export async function createEvent(
           resolveBy: data.resolveBy || data.resolve_by,
           createdAt: data.createdAt || data.created_at || Date.now() / 1000,
         };
+        return newEvent;
       }
     } catch (e) {
       console.error('Backend error:', e);
@@ -208,7 +215,7 @@ export async function getEvent(eventId: string): Promise<Event | null> {
 export async function getEventPrices(eventId: string): Promise<Prices> {
   const isOnline = await checkBackend();
   
-  if (isOnline) {
+  if (isOnline && !eventId.startsWith('evt_')) {
     try {
       const res = await fetch(API_BASE, {
         method: 'POST',
@@ -233,7 +240,7 @@ export async function getEventPrices(eventId: string): Promise<Prices> {
     }
   }
   
-  // Mock prices - start at 50/50
+  // Mock prices logic
   const event = await getEvent(eventId);
   const outcomes = event?.outcomes || ['yes', 'no'];
   const prices: Record<string, number> = {};
@@ -286,7 +293,7 @@ export async function placeBet(
 ): Promise<BetResponse> {
   const isOnline = await checkBackend();
   
-  if (isOnline) {
+  if (isOnline && !eventId.startsWith('evt_')) {
     try {
       const res = await fetch(API_BASE, {
         method: 'POST',
@@ -381,9 +388,6 @@ function saveBet(eventId: string, bet: Bet): void {
   localStorage.setItem(`mitra_bets_${eventId}`, JSON.stringify(bets));
 }
 
-/**
- * Get all public bets for an event (visible to all group members)
- */
 export function getPublicBets(eventId: string): Bet[] {
   return getBets(eventId).filter(b => b.isPublic);
 }
@@ -400,7 +404,7 @@ export async function settleEvent(
 ): Promise<{ success: boolean; txSignature?: string }> {
   const isOnline = await checkBackend();
   
-  if (isOnline) {
+  if (isOnline && !eventId.startsWith('evt_')) {
     try {
       const res = await fetch(API_BASE, {
         method: 'POST',
@@ -441,6 +445,60 @@ export async function settleEvent(
   };
 }
 
+export async function deleteEvent(
+  eventId: string,
+  deleterWallet: string,
+  signature: string = 'dev'
+): Promise<boolean> {
+  const isOnline = await checkBackend();
+
+  if (isOnline && !eventId.startsWith('evt_')) {
+    try {
+      const res = await fetch(API_BASE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: 'DeleteEvent',
+          data: {
+            event_id: eventId,
+            deleter_wallet: deleterWallet,
+            signature,
+          },
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        // Clean up local storage if it exists there too
+        const groupEventsKey = Object.keys(localStorage).find(k => k.startsWith('mitra_events_') && localStorage.getItem(k)?.includes(eventId));
+        if (groupEventsKey) {
+          const events = JSON.parse(localStorage.getItem(groupEventsKey) || '[]') as Event[];
+          const filtered = events.filter(e => e.eventId !== eventId);
+          localStorage.setItem(groupEventsKey, JSON.stringify(filtered));
+          // Clean up prices
+          localStorage.removeItem(`mitra_prices_${eventId}`);
+          // Clean up bets
+          localStorage.removeItem(`mitra_bets_${eventId}`);
+        }
+        return data.success;
+      }
+    } catch (e) {
+      console.error('Backend error:', e);
+    }
+  }
+
+  // Local/Mock delete logic
+  const groupEventsKey = Object.keys(localStorage).find(k => k.startsWith('mitra_events_') && localStorage.getItem(k)?.includes(eventId));
+  if (groupEventsKey) {
+    const events = JSON.parse(localStorage.getItem(groupEventsKey) || '[]') as Event[];
+    const filtered = events.filter(e => e.eventId !== eventId);
+    localStorage.setItem(groupEventsKey, JSON.stringify(filtered));
+    return true;
+  }
+  
+  return false;
+}
+
 function updateEventStatus(eventId: string, status: string, winningOutcome?: string): void {
   const allKeys = Object.keys(localStorage).filter(k => k.startsWith('mitra_events_'));
   for (const key of allKeys) {
@@ -464,7 +522,7 @@ function updateEventStatus(eventId: string, status: string, winningOutcome?: str
 import type { BalanceResponse, TransactionResponse } from '@/types';
 
 export async function getBalance(
-  groupId: string,
+  groupSolanaPubkey: string,
   userWallet: string
 ): Promise<BalanceResponse> {
   const isOnline = await checkBackend();
@@ -477,7 +535,7 @@ export async function getBalance(
         body: JSON.stringify({
           method: 'GetUserBalance',
           data: {
-            group_id: groupId,
+            group_id: groupSolanaPubkey, // Backend expects pubkey in group_id field for treasury ops
             user_wallet: userWallet,
           },
         }),
@@ -491,21 +549,20 @@ export async function getBalance(
           fundsLocked: data.fundsLocked || data.funds_locked || false,
         };
       }
+      
+      // If error (e.g. 500) return zero balance
+      console.error('Failed to get balance:', await res.text());
+      return { balanceSol: 0, balanceUsdc: 0, fundsLocked: false };
     } catch (e) {
       console.error('Backend error:', e);
     }
   }
   
-  // Mock balance from localStorage
-  const stored = localStorage.getItem(`mitra_balance_${groupId}_${userWallet}`);
-  if (stored) {
-    return JSON.parse(stored);
-  }
   return { balanceSol: 0, balanceUsdc: 0, fundsLocked: false };
 }
 
 export async function deposit(
-  groupId: string,
+  groupSolanaPubkey: string,
   userWallet: string,
   amountUsdc: number,
   signature: string = 'dev'
@@ -520,63 +577,7 @@ export async function deposit(
         body: JSON.stringify({
           method: 'DepositFunds',
           data: {
-            group_id: groupId,
-            user_wallet: userWallet,
-            amount_sol: 0,
-            amount_usdc: amountUsdc,
-            user_usdc_account: userWallet, // Placeholder - would need real USDC ATA
-            signature,
-          },
-        }),
-      });
-      
-      if (res.ok) {
-        const data = await res.json();
-        return {
-          success: data.success,
-          solanaTxSignature: data.solanaTxSignature || data.solana_tx_signature,
-          newBalanceSol: data.newBalanceSol || data.new_balance_sol || 0,
-          newBalanceUsdc: data.newBalanceUsdc || data.new_balance_usdc || 0,
-        };
-      }
-    } catch (e) {
-      console.error('Backend error:', e);
-    }
-  }
-  
-  // Mock deposit
-  const current = await getBalance(groupId, userWallet);
-  const newBalance: BalanceResponse = {
-    ...current,
-    balanceUsdc: current.balanceUsdc + amountUsdc,
-  };
-  localStorage.setItem(`mitra_balance_${groupId}_${userWallet}`, JSON.stringify(newBalance));
-  
-  return {
-    success: true,
-    solanaTxSignature: 'mock_deposit_' + Date.now(),
-    newBalanceSol: newBalance.balanceSol,
-    newBalanceUsdc: newBalance.balanceUsdc,
-  };
-}
-
-export async function withdraw(
-  groupId: string,
-  userWallet: string,
-  amountUsdc: number,
-  signature: string = 'dev'
-): Promise<TransactionResponse> {
-  const isOnline = await checkBackend();
-  
-  if (isOnline) {
-    try {
-      const res = await fetch(API_BASE, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          method: 'WithdrawFunds',
-          data: {
-            group_id: groupId,
+            group_id: groupSolanaPubkey,
             user_wallet: userWallet,
             amount_sol: 0,
             amount_usdc: amountUsdc,
@@ -594,30 +595,60 @@ export async function withdraw(
           newBalanceSol: data.newBalanceSol || data.new_balance_sol || 0,
           newBalanceUsdc: data.newBalanceUsdc || data.new_balance_usdc || 0,
         };
+      } else {
+        throw new Error(await res.text());
       }
     } catch (e) {
       console.error('Backend error:', e);
+      throw e;
     }
   }
+  throw new Error('Backend unavailable');
+}
+
+export async function withdraw(
+  groupSolanaPubkey: string,
+  userWallet: string,
+  amountUsdc: number,
+  signature: string = 'dev'
+): Promise<TransactionResponse> {
+  const isOnline = await checkBackend();
   
-  // Mock withdraw
-  const current = await getBalance(groupId, userWallet);
-  if (current.balanceUsdc < amountUsdc) {
-    throw new Error('Insufficient balance');
+  if (isOnline) {
+    try {
+      const res = await fetch(API_BASE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: 'WithdrawFunds',
+          data: {
+            group_id: groupSolanaPubkey,
+            user_wallet: userWallet,
+            amount_sol: 0,
+            amount_usdc: amountUsdc,
+            user_usdc_account: userWallet, // Placeholder
+            signature,
+          },
+        }),
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        return {
+          success: data.success,
+          solanaTxSignature: data.solanaTxSignature || data.solana_tx_signature,
+          newBalanceSol: data.newBalanceSol || data.new_balance_sol || 0,
+          newBalanceUsdc: data.newBalanceUsdc || data.new_balance_usdc || 0,
+        };
+      } else {
+        throw new Error(await res.text());
+      }
+    } catch (e) {
+      console.error('Backend error:', e);
+      throw e;
+    }
   }
-  
-  const newBalance: BalanceResponse = {
-    ...current,
-    balanceUsdc: current.balanceUsdc - amountUsdc,
-  };
-  localStorage.setItem(`mitra_balance_${groupId}_${userWallet}`, JSON.stringify(newBalance));
-  
-  return {
-    success: true,
-    solanaTxSignature: 'mock_withdraw_' + Date.now(),
-    newBalanceSol: newBalance.balanceSol,
-    newBalanceUsdc: newBalance.balanceUsdc,
-  };
+  throw new Error('Backend unavailable');
 }
 
 // Format USDC for display (6 decimal places on chain -> display)

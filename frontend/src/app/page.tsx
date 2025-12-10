@@ -89,87 +89,83 @@ export default function HomePage() {
 
   if (isLoading && !isInitialized) {
     return (
-      <>
-        <div className="container">
-          <div className="content">
-            <p className="coming-soon">loading...</p>
-          </div>
+      <div className="landing-container">
+        <div className="content">
+          <p className="coming-soon">loading...</p>
         </div>
-        <style jsx global>{styles}</style>
-      </>
+        <style jsx>{styles}</style>
+      </div>
     );
   }
 
   return (
-    <>
-      <div className="container">
-        <div className="content">
-          {!showLogin ? (
-            <>
-              <h1>{BRAND.tagline}</h1>
-              <h2>this <em>might</em> ruin your friendships.</h2>
-              <p className="coming-soon" onClick={() => setShowLogin(true)} style={{ cursor: 'pointer' }}>
-                enter →
-              </p>
-            </>
-          ) : (
-            <form onSubmit={handleEmailLogin} className="login-form">
-              <h1>sign in</h1>
+    <div className="landing-container">
+      <div className="content">
+        {!showLogin ? (
+          <>
+            <h1>{BRAND.tagline}</h1>
+            <h2>this <em>might</em> ruin your friendships.</h2>
+            <p className="coming-soon" onClick={() => setShowLogin(true)} style={{ cursor: 'pointer' }}>
+              enter →
+            </p>
+          </>
+        ) : (
+          <form onSubmit={handleEmailLogin} className="login-form">
+            <h1>sign in</h1>
 
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="your email"
-                className="email-input"
-                autoFocus
-                disabled={isSubmitting}
-              />
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="your email"
+              className="email-input"
+              autoFocus
+              disabled={isSubmitting}
+            />
 
-              {error && <p className="error-text">{error}</p>}
+            {error && <p className="error-text">{error}</p>}
 
-              {loginStatus ? (
-                <p className="coming-soon">{loginStatus}</p>
-              ) : (
-                <button type="submit" disabled={!email || isSubmitting} className="coming-soon submit-btn">
-                  continue →
-                </button>
-              )}
+            {loginStatus ? (
+              <p className="coming-soon">{loginStatus}</p>
+            ) : (
+              <button type="submit" disabled={!email || isSubmitting} className="coming-soon submit-btn">
+                continue →
+              </button>
+            )}
 
-              <p className="hint">
-                {isMockMode
-                  ? 'dev mode — instant login'
-                  : isSubmitting
-                    ? 'click the link in your email'
-                    : 'we\'ll send you a magic link'
-                }
-              </p>
+            <p className="hint">
+              {isMockMode
+                ? 'dev mode — instant login'
+                : isSubmitting
+                  ? 'click the link in your email'
+                  : 'we\'ll send you a magic link'
+              }
+            </p>
 
-              <p className="hint-small">a solana wallet will be created for you</p>
+            <p className="hint-small">a solana wallet will be created for you</p>
 
-              {!isSubmitting ? (
-                <button
-                  type="button"
-                  onClick={() => { setShowLogin(false); setLoginStatus(null); setEmail(''); }}
-                  className="back-link"
-                >
-                  ← back
-                </button>
-              ) : !isMockMode && (
-                <button
-                  type="button"
-                  onClick={() => { setIsSubmitting(false); setLoginStatus(null); }}
-                  className="back-link"
-                >
-                  cancel
-                </button>
-              )}
-            </form>
-          )}
-        </div>
+            {!isSubmitting ? (
+              <button
+                type="button"
+                onClick={() => { setShowLogin(false); setLoginStatus(null); setEmail(''); }}
+                className="back-link"
+              >
+                ← back
+              </button>
+            ) : !isMockMode && (
+              <button
+                type="button"
+                onClick={() => { setIsSubmitting(false); setLoginStatus(null); }}
+                className="back-link"
+              >
+                cancel
+              </button>
+            )}
+          </form>
+        )}
       </div>
-      <style jsx global>{styles}</style>
-    </>
+      <style jsx>{styles}</style>
+    </div>
   );
 }
 
@@ -180,13 +176,7 @@ const styles = `
     box-sizing: border-box;
   }
 
-  html {
-    height: 100%;
-    width: 100%;
-    overflow: hidden;
-  }
-
-  body {
+  .landing-container {
     background-color: #000000;
     color: #ffffff;
     font-family: inherit;
@@ -200,21 +190,19 @@ const styles = `
     text-align: center;
     padding: 5vw;
     overflow: hidden;
+    position: fixed; /* Ensures it acts like the body overlay */
+    top: 0;
+    left: 0;
   }
 
-  .container {
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    width: 100%;
-    text-align: center;
-  }
+  /* .container class removed in favor of .landing-container acting as wrapper */
 
   .content {
     max-width: 90vw;
     width: 100%;
+    margin: 0 auto;
   }
+/* ... rest of styles unchanged ... */
 
   h1 {
     font-size: clamp(1.2rem, 5vw, 2rem);

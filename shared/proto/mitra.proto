@@ -11,6 +11,7 @@ service MitraService {
   rpc CreateEvent(CreateEventRequest) returns (EventResponse);
   rpc GetEventPrices(GetPricesRequest) returns (PricesResponse);
   rpc SettleEvent(SettleEventRequest) returns (SettleResponse);
+  rpc DeleteEvent(DeleteEventRequest) returns (DeleteEventResponse);
   
   // Betting
   rpc PlaceBet(PlaceBetRequest) returns (BetResponse);
@@ -48,6 +49,17 @@ message InviteMemberRequest {
   string signature = 4; // Inviter signature
 }
 
+message DeleteEventRequest {
+  string event_id = 1;
+  string deleter_wallet = 2;
+  string signature = 3;
+}
+
+message DeleteEventResponse {
+  bool success = 1;
+  string event_id = 2;
+}
+
 message MemberResponse {
   string group_id = 1;
   string user_id = 2;
@@ -68,7 +80,8 @@ message CreateEventRequest {
   string settlement_type = 5; // "manual", "oracle", "consensus"
   int64 resolve_by = 6; // Unix timestamp, optional
   string creator_wallet = 7;
-  string signature = 8;
+  string arbiter_wallet = 8; // Optional, for "manual" settlement
+  string signature = 9;
 }
 
 message EventResponse {
@@ -80,8 +93,9 @@ message EventResponse {
   repeated string outcomes = 6;
   string settlement_type = 7;
   string status = 8; // "active", "resolved", "cancelled"
-  int64 resolve_by = 9;
-  int64 created_at = 10;
+  string arbiter_wallet = 9;
+  int64 resolve_by = 10;
+  int64 created_at = 11;
 }
 
 message GetPricesRequest {

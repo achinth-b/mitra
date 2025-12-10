@@ -3,9 +3,19 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth';
-import { createGroup, getGroups, saveGroups, addGroupCreatorAsMember } from '@/lib/api';
+import {
+  createGroup,
+  getGroups,
+  saveGroups,
+  addGroupCreatorAsMember,
+  getBalance,
+  deposit,
+  withdraw,
+  formatUsdc,
+  parseUsdc
+} from '@/lib/api';
 import { BRAND } from '@/lib/brand';
-import type { FriendGroup } from '@/types';
+import type { FriendGroup, BalanceResponse } from '@/types';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -15,6 +25,14 @@ export default function DashboardPage() {
   const [newGroupName, setNewGroupName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [pageReady, setPageReady] = useState(false);
+
+  // Wallet state
+  const [balance, setBalance] = useState<BalanceResponse | null>(null);
+  const [showDeposit, setShowDeposit] = useState(false);
+  const [showWithdraw, setShowWithdraw] = useState(false);
+  const [transactionAmount, setTransactionAmount] = useState('');
+  const [transactionError, setTransactionError] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // Check auth on mount if not initialized
   useEffect(() => {
@@ -38,6 +56,82 @@ export default function DashboardPage() {
       getGroups(user.walletAddress).then(setGroups);
     }
   }, [user.walletAddress]);
+
+  // Load wallet balance (using first group's treasury)
+  useEffect(() => {
+    if (user.walletAddress && groups.length > 0 && pageReady) {
+      const firstGroup = groups[0];
+      if (firstGroup.solanaPubkey && !firstGroup.solanaPubkey.includes('_')) {
+        getBalance(firstGroup.solanaPubkey, user.walletAddress).then(setBalance);
+      }
+    }
+  }, [user.walletAddress, groups, pageReady]);
+
+  const handleDeposit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!transactionAmount || !user.walletAddress || groups.length === 0) return;
+
+    setIsProcessing(true);
+    setTransactionError(null);
+
+    try {
+      const amountUsdc = parseUsdc(transactionAmount);
+      const firstGroup = groups[0];
+
+      if (!firstGroup.solanaPubkey || firstGroup.solanaPubkey.includes('_')) {
+        throw new Error('Please create a group first to use wallet features');
+      }
+
+      const result = await deposit(firstGroup.solanaPubkey, user.walletAddress, amountUsdc);
+
+      if (result.success) {
+        setBalance({
+          balanceSol: result.newBalanceSol,
+          balanceUsdc: result.newBalanceUsdc,
+          fundsLocked: false,
+        });
+        setTransactionAmount('');
+        setShowDeposit(false);
+      }
+    } catch (error) {
+      setTransactionError(error instanceof Error ? error.message : 'Deposit failed');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleWithdraw = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!transactionAmount || !user.walletAddress || groups.length === 0) return;
+
+    setIsProcessing(true);
+    setTransactionError(null);
+
+    try {
+      const amountUsdc = parseUsdc(transactionAmount);
+      const firstGroup = groups[0];
+
+      if (!firstGroup.solanaPubkey || firstGroup.solanaPubkey.includes('_')) {
+        throw new Error('Please create a group first to use wallet features');
+      }
+
+      const result = await withdraw(firstGroup.solanaPubkey, user.walletAddress, amountUsdc);
+
+      if (result.success) {
+        setBalance({
+          balanceSol: result.newBalanceSol,
+          balanceUsdc: result.newBalanceUsdc,
+          fundsLocked: false,
+        });
+        setTransactionAmount('');
+        setShowWithdraw(false);
+      }
+    } catch (error) {
+      setTransactionError(error instanceof Error ? error.message : 'Withdrawal failed');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
 
   const handleLogout = async () => {
     await logout();
@@ -133,6 +227,85 @@ export default function DashboardPage() {
               </button>
             )}
           </div>
+        </section>
+
+        {/* Wallet Section */}
+        <section className="wallet-section">
+          <h2>your mitra wallet</h2>
+
+          <div className="balance-display">
+            <p className="balance-amount">
+              ${balance ? formatUsdc(balance.balanceUsdc) : '0.00'} <span className="currency">USDC</span>
+            </p>
+            {balance?.fundsLocked && (
+              <p className="funds-locked">⚠ some funds locked in active bets</p>
+            )}
+          </div>
+
+          <div className="wallet-actions">
+            <button
+              onClick={() => { setShowDeposit(true); setShowWithdraw(false); setTransactionError(null); }}
+              className="deposit-btn"
+            >
+              + deposit
+            </button>
+            <button
+              onClick={() => { setShowWithdraw(true); setShowDeposit(false); setTransactionError(null); }}
+              className="withdraw-btn"
+            >
+              − withdraw
+            </button>
+          </div>
+
+          {/* Deposit Form */}
+          {showDeposit && (
+            <form onSubmit={handleDeposit} className="transaction-form">
+              <input
+                type="number"
+                step="0.01"
+                value={transactionAmount}
+                onChange={(e) => setTransactionAmount(e.target.value)}
+                placeholder="amount in USDC"
+                disabled={isProcessing}
+                className="amount-input"
+                autoFocus
+              />
+              {transactionError && <p className="error-text">{transactionError}</p>}
+              <div className="form-actions">
+                <button type="submit" disabled={isProcessing || !transactionAmount} className="submit-btn">
+                  {isProcessing ? 'processing...' : 'confirm deposit'}
+                </button>
+                <button type="button" onClick={() => { setShowDeposit(false); setTransactionAmount(''); setTransactionError(null); }} className="cancel-btn">
+                  cancel
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Withdraw Form */}
+          {showWithdraw && (
+            <form onSubmit={handleWithdraw} className="transaction-form">
+              <input
+                type="number"
+                step="0.01"
+                value={transactionAmount}
+                onChange={(e) => setTransactionAmount(e.target.value)}
+                placeholder="amount in USDC"
+                disabled={isProcessing}
+                className="amount-input"
+                autoFocus
+              />
+              {transactionError && <p className="error-text">{transactionError}</p>}
+              <div className="form-actions">
+                <button type="submit" disabled={isProcessing || !transactionAmount} className="submit-btn">
+                  {isProcessing ? 'processing...' : 'confirm withdrawal'}
+                </button>
+                <button type="button" onClick={() => { setShowWithdraw(false); setTransactionAmount(''); setTransactionError(null); }} className="cancel-btn">
+                  cancel
+                </button>
+              </div>
+            </form>
+          )}
         </section>
 
         {/* Groups Section */}
@@ -289,6 +462,141 @@ export default function DashboardPage() {
 
         .copy-btn:hover {
           opacity: 0.8;
+        }
+
+        .wallet-section {
+          padding: clamp(2rem, 5vw, 3rem) 0;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+          margin-bottom: clamp(2rem, 5vw, 3rem);
+        }
+
+        .wallet-section h2 {
+          font-size: clamp(1.2rem, 4vw, 1.5rem);
+          font-weight: normal;
+          margin-bottom: clamp(1.5rem, 4vw, 2rem);
+        }
+
+        .balance-display {
+          margin-bottom: 2rem;
+        }
+
+        .balance-amount {
+          font-size: clamp(2.5rem, 8vw, 3.5rem);
+          font-weight: 300;
+          margin-bottom: 0.5rem;
+          letter-spacing: -0.02em;
+        }
+
+        .currency {
+          font-size: clamp(1.5rem, 5vw, 2rem);
+          opacity: 0.5;
+        }
+
+        .funds-locked {
+          font-size: 0.9rem;
+          color: #fbbf24;
+          opacity: 0.9;
+        }
+
+        .wallet-actions {
+          display: flex;
+          gap: 1rem;
+          justify-content: center;
+          margin-bottom: 2rem;
+        }
+
+        .deposit-btn, .withdraw-btn {
+          padding: 0.75rem 2rem;
+          border-radius: 2rem;
+          font-size: 1rem;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          border: none;
+        }
+
+        .deposit-btn {
+          background: rgba(16, 185, 129, 0.2);
+          color: #10b981;
+        }
+
+        .deposit-btn:hover {
+          background: rgba(16, 185, 129, 0.3);
+        }
+
+        .withdraw-btn {
+          background: rgba(255, 255, 255, 0.1);
+          color: rgba(255, 255, 255, 0.7);
+        }
+
+        .withdraw-btn:hover {
+          background: rgba(255, 255, 255, 0.2);
+          color: rgba(255, 255, 255, 1);
+        }
+
+        .transaction-form {
+          max-width: 350px;
+          margin: 2rem auto 0;
+          padding: 2rem;
+          background: rgba(255, 255, 255, 0.03);
+          border-radius: 1rem;
+          border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .amount-input {
+          width: 100%;
+          padding: 1rem;
+          margin-bottom: 1rem;
+          border-radius: 0.5rem;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          background: rgba(0, 0, 0, 0.3);
+          color: white;
+          font-size: 1.2rem;
+          text-align: center;
+        }
+
+        .amount-input:focus {
+          border-color: rgba(255, 255, 255, 0.4);
+          outline: none;
+        }
+
+        .form-actions {
+          display: flex;
+          gap: 0.75rem;
+          flex-direction: column;
+        }
+
+        .submit-btn {
+          padding: 0.75rem 1.5rem;
+          border-radius: 0.5rem;
+          background: rgba(59, 130, 246, 0.2);
+          color: #3b82f6;
+          border: none;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .submit-btn:hover:not(:disabled) {
+          background: rgba(59, 130, 246, 0.3);
+        }
+
+        .submit-btn:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+
+        .cancel-btn {
+          padding: 0.75rem 1.5rem;
+          border-radius: 0.5rem;
+          background: rgba(255, 255, 255, 0.05);
+          color: rgba(255, 255, 255, 0.6);
+          border: none;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .cancel-btn:hover {
+          background: rgba(255, 255, 255, 0.1);
+          color: rgba(255, 255, 255, 0.9);
         }
 
         .logout-btn {

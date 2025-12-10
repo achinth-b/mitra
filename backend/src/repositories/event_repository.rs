@@ -22,12 +22,14 @@ impl EventRepository {
         outcomes: &serde_json::Value,
         settlement_type: &str,
         resolve_by: Option<chrono::NaiveDateTime>,
+        solana_pubkey: Option<&str>,
+        arbiter_wallet: Option<&str>,
     ) -> SqlxResult<Event> {
         sqlx::query_as!(
             Event,
             r#"
-            INSERT INTO events (group_id, title, description, outcomes, settlement_type, resolve_by)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO events (group_id, title, description, outcomes, settlement_type, resolve_by, solana_pubkey, arbiter_wallet)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING 
                 id, 
                 group_id, 
@@ -38,14 +40,17 @@ impl EventRepository {
                 settlement_type, 
                 status, 
                 resolve_by, 
-                created_at
+                created_at,
+                arbiter_wallet
             "#,
             group_id,
             title,
             description,
             outcomes,
             settlement_type,
-            resolve_by
+            resolve_by,
+            solana_pubkey,
+            arbiter_wallet
         )
         .fetch_one(&self.pool)
         .await
@@ -66,7 +71,8 @@ impl EventRepository {
                 settlement_type, 
                 status, 
                 resolve_by, 
-                created_at
+                created_at,
+                arbiter_wallet
             FROM events
             WHERE id = $1
             "#,
@@ -91,7 +97,8 @@ impl EventRepository {
                 settlement_type, 
                 status, 
                 resolve_by, 
-                created_at
+                created_at,
+                arbiter_wallet
             FROM events
             WHERE solana_pubkey = $1
             "#,
@@ -116,7 +123,8 @@ impl EventRepository {
                 settlement_type, 
                 status, 
                 resolve_by, 
-                created_at
+                created_at,
+                arbiter_wallet
             FROM events
             WHERE group_id = $1
             ORDER BY created_at DESC
@@ -150,7 +158,8 @@ impl EventRepository {
                 settlement_type, 
                 status, 
                 resolve_by, 
-                created_at
+                created_at,
+                arbiter_wallet
             "#,
             id,
             status_str
@@ -181,7 +190,8 @@ impl EventRepository {
                 settlement_type, 
                 status, 
                 resolve_by, 
-                created_at
+                created_at,
+                arbiter_wallet
             "#,
             id,
             solana_pubkey
@@ -205,7 +215,8 @@ impl EventRepository {
                 settlement_type, 
                 status, 
                 resolve_by, 
-                created_at
+                created_at,
+                arbiter_wallet
             FROM events
             WHERE status = 'active'
             ORDER BY created_at DESC
@@ -230,7 +241,8 @@ impl EventRepository {
                 settlement_type, 
                 status, 
                 resolve_by, 
-                created_at
+                created_at,
+                arbiter_wallet
             FROM events
             WHERE group_id = $1 AND status = 'active'
             ORDER BY created_at DESC
@@ -256,7 +268,8 @@ impl EventRepository {
                 settlement_type, 
                 status, 
                 resolve_by, 
-                created_at
+                created_at,
+                arbiter_wallet
             FROM events
             WHERE status = 'active' 
                 AND resolve_by IS NOT NULL 
@@ -266,6 +279,17 @@ impl EventRepository {
         )
         .fetch_all(&self.pool)
         .await
+    }
+
+    pub async fn delete(&self, id: Uuid) -> SqlxResult<bool> {
+        let result = sqlx::query!(
+            "DELETE FROM events WHERE id = $1",
+            id
+        )
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
     }
 }
 

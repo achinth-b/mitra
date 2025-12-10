@@ -43,6 +43,7 @@ export interface Event {
   resolveBy?: number;
   createdAt: number;
   winningOutcome?: string;
+  arbiterWallet?: string;
 }
 
 export interface Bet {

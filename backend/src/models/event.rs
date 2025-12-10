@@ -101,6 +101,7 @@ pub struct Event {
     pub status: String, // Stored as TEXT, use EventStatus enum for type safety
     pub resolve_by: Option<NaiveDateTime>,
     pub created_at: NaiveDateTime,
+    pub arbiter_wallet: Option<String>,
 }
 
 impl Event {
@@ -112,6 +113,7 @@ impl Event {
         outcomes: Vec<String>,
         settlement_type: SettlementType,
         resolve_by: Option<NaiveDateTime>,
+        arbiter_wallet: Option<String>,
     ) -> Self {
         Self {
             id: Uuid::new_v4(),
@@ -124,6 +126,7 @@ impl Event {
             status: EventStatus::Active.as_str().to_string(),
             resolve_by,
             created_at: chrono::Utc::now().naive_utc(),
+            arbiter_wallet,
         }
     }
 
