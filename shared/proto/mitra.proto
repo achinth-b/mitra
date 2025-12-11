@@ -9,6 +9,7 @@ service MitraService {
   
   // Event/Market Management
   rpc CreateEvent(CreateEventRequest) returns (EventResponse);
+  rpc GetGroupEvents(GetGroupEventsRequest) returns (EventListResponse);
   rpc GetEventPrices(GetPricesRequest) returns (PricesResponse);
   rpc SettleEvent(SettleEventRequest) returns (SettleResponse);
   rpc DeleteEvent(DeleteEventRequest) returns (DeleteEventResponse);
@@ -108,6 +109,14 @@ message EventResponse {
   string arbiter_wallet = 9;
   int64 resolve_by = 10;
   int64 created_at = 11;
+}
+
+message GetGroupEventsRequest {
+  string group_id = 1;
+}
+
+message EventListResponse {
+  repeated EventResponse events = 1;
 }
 
 message GetPricesRequest {

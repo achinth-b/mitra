@@ -339,23 +339,19 @@ export default function GroupPage() {
             }}>{group.name}</h1>
           </header>
 
+
           {/* Members Section */}
           <section style={{
             marginBottom: '48px',
-            padding: '24px',
-            borderRadius: '12px',
-            background: '#050505',
+            padding: '32px',
+            borderRadius: '24px',
+            background: 'linear-gradient(145deg, #0a0a0a 0%, #050505 100%)',
             border: '1px solid #222',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.2)'
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
-              <h2 style={{ fontSize: '16px', fontWeight: '500', color: '#888', letterSpacing: '0.05em', textTransform: 'lowercase' }}>members</h2>
-              <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-                <button
-                  onClick={() => setShowMembers(!showMembers)}
-                  className="text-sm text-white/50 hover:text-white/80 transition-colors"
-                >
-                  {showMembers ? 'hide' : `show (${members.length || 1})`}
-                </button>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '32px' }}>
+              <h2 style={{ fontSize: '14px', fontWeight: '600', color: '#666', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Group Members</h2>
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                 {isAdmin && (
                   <button
                     onClick={() => {
@@ -364,85 +360,84 @@ export default function GroupPage() {
                         setInviteLink(link);
                       }
                     }}
-                    className="text-sm px-3 py-1 rounded-full bg-white/10 text-white/70 hover:bg-white/20 hover:text-white transition-all"
+                    className="text-xs font-medium px-4 py-2 rounded-full bg-white text-black hover:bg-gray-200 transition-all flex items-center gap-2"
                   >
-                    + invite
+                    <span>+</span> Invite Friend
                   </button>
                 )}
+                <button
+                  onClick={() => setShowMembers(!showMembers)}
+                  className="text-xs text-white/40 hover:text-white transition-colors"
+                >
+                  {showMembers ? 'Hide' : `Show All (${members.length})`}
+                </button>
               </div>
             </div>
 
             {/* Invite Link */}
             {inviteLink && (
-              <div className="mb-4 p-4 rounded-xl" style={{
-                background: 'rgba(255, 255, 255, 0.05)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
+              <div className="mb-8 p-6 rounded-2xl relative overflow-hidden group" style={{
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px dashed rgba(255, 255, 255, 0.2)',
               }}>
-                <p className="text-xs text-white/50 mb-2">share this link to invite members:</p>
-                <div className="flex items-center gap-2">
-                  <code className="flex-1 text-xs text-white/70 bg-black/30 px-3 py-2 rounded-lg overflow-x-auto">
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <p className="text-xs text-blue-400 mb-3 font-medium uppercase tracking-wider relative z-10">Invite Link Generated</p>
+                <div className="flex items-center gap-4 relative z-10">
+                  <div className="flex-1 bg-black/50 border border-white/10 rounded-xl px-4 py-3 font-mono text-xs text-white/70 overflow-hidden text-ellipsis whitespace-nowrap">
                     {inviteLink}
-                  </code>
+                  </div>
                   <button
                     onClick={() => {
                       navigator.clipboard.writeText(inviteLink);
+                      alert('Copied to clipboard!');
                     }}
-                    className="text-xs text-white/60 hover:text-white transition-colors px-3 py-2 bg-white/10 hover:bg-white/20 rounded-lg"
+                    className="text-xs font-medium px-4 py-3 bg-white/10 hover:bg-white/20 text-white rounded-xl transition-all whitespace-nowrap"
                   >
-                    copy
+                    Copy Link
                   </button>
                 </div>
               </div>
             )}
 
-            {/* Members List */}
+            {/* Members Grid */}
             {showMembers && (
-              <ul className="space-y-2">
-                {members.length > 0 ? (
-                  members.map((member) => (
-                    <li
-                      key={member.walletAddress}
-                      className="flex items-center justify-between py-3 px-4 rounded-xl transition-colors hover:bg-white/5"
-                      style={{ background: 'rgba(255, 255, 255, 0.02)' }}
-                    >
-                      <span className="text-white/70 font-mono text-sm">
-                        {member.walletAddress.slice(0, 8)}...{member.walletAddress.slice(-4)}
-                      </span>
-                      {member.role === 'admin' && (
-                        <span className="text-xs text-emerald-400/80 bg-emerald-400/10 px-2 py-1 rounded-full">
-                          admin
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {members.map((member) => (
+                  <div
+                    key={member.walletAddress}
+                    className="flex items-center gap-4 p-4 rounded-xl border border-white/5 hover:border-white/10 transition-all bg-white/[0.02]"
+                  >
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-800 to-black flex items-center justify-center border border-white/10 text-xs font-mono text-white/50">
+                      {member.walletAddress.slice(0, 2)}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-white/90 font-medium truncate font-mono">
+                          {member.walletAddress.slice(0, 4)}...{member.walletAddress.slice(-4)}
                         </span>
-                      )}
-                    </li>
-                  ))
-                ) : (
-                  <li className="text-center text-white/40 py-4 text-sm">
-                    just you for now — invite some friends!
-                  </li>
-                )}
-              </ul>
+                        {member.role === 'admin' && (
+                          <span className="text-[10px] font-bold text-amber-500/90 bg-amber-500/10 px-2 py-0.5 rounded uppercase tracking-wide">
+                            Admin
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-white/30 truncate">
+                        Joined {new Date(Number(member.joinedAt) * 1000).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
 
-            {/* Danger Zone (Admin Only) */}
-            {isAdmin && group && (
-              <div style={{ marginTop: '64px', borderTop: '1px solid #222', paddingTop: '32px', textAlign: 'center' }}>
+            {/* Danger Zone */}
+            {isAdmin && group && showMembers && (
+              <div className="mt-8 pt-8 border-t border-white/5 text-center">
                 <button
                   onClick={handleDeleteGroup}
-                  style={{
-                    background: 'transparent',
-                    border: '1px solid #450a0a',
-                    color: '#ef4444',
-                    padding: '12px 24px',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    cursor: 'pointer',
-                    opacity: 0.7,
-                    transition: 'all 0.2s'
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = '#450a0a'; e.currentTarget.style.opacity = '1'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.opacity = '0.7'; }}
+                  className="text-xs text-red-500/50 hover:text-red-500 hover:underline transition-all"
                 >
-                  Delete Group
+                  Delete Group Permanently
                 </button>
               </div>
             )}
@@ -451,168 +446,94 @@ export default function GroupPage() {
           {/* Balance Section */}
           <section style={{
             width: '100%',
-            padding: '32px',
-            borderRadius: '16px',
+            padding: '48px',
+            borderRadius: '24px',
             textAlign: 'center',
-            background: '#000',
+            background: 'radial-gradient(circle at center, #1a1a1a 0%, #000 100%)',
             border: '1px solid #222',
-            boxSizing: 'border-box'
+            boxSizing: 'border-box',
+            position: 'relative',
+            overflow: 'hidden'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: '500', color: '#fff', margin: 0 }}>your balance</h2>
-              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                <button
-                  onClick={() => { setShowDeposit(true); setShowWithdraw(false); setTransactionError(null); }}
-                  style={{ fontSize: '14px', padding: '8px 16px', borderRadius: '8px', background: '#111', color: '#fff', border: '1px solid #333', cursor: 'pointer' }}
-                >
-                  + deposit
-                </button>
-                <button
-                  onClick={() => { setShowWithdraw(true); setShowDeposit(false); setTransactionError(null); }}
-                  style={{ fontSize: '14px', padding: '8px 16px', borderRadius: '8px', background: 'transparent', color: '#888', border: 'none', cursor: 'pointer' }}
-                >
-                  − withdraw
-                </button>
-              </div>
+            <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '32px', marginBottom: '40px' }}>
+              <button
+                onClick={() => { setShowDeposit(true); setShowWithdraw(false); setTransactionError(null); }}
+                className="text-sm font-medium px-6 py-2 rounded-full border border-white/10 hover:bg-white/5 hover:border-white/30 text-white/70 hover:text-white transition-all"
+              >
+                Deposit
+              </button>
+              <h2 className="text-xs font-bold tracking-[0.2em] text-white/30 uppercase">Your Balance</h2>
+              <button
+                onClick={() => { setShowWithdraw(true); setShowDeposit(false); setTransactionError(null); }}
+                className="text-sm font-medium px-6 py-2 rounded-full border border-white/10 hover:bg-white/5 hover:border-white/30 text-white/70 hover:text-white transition-all"
+              >
+                Withdraw
+              </button>
             </div>
 
-            <div className="text-center py-4">
-              <p className="text-5xl md:text-6xl font-light mb-2 text-white tracking-tight">
-                ${balance ? formatUsdc(balance.balanceUsdc) : '0.00'} <span className="text-white/40 text-3xl">USDC</span>
+            <div className="text-center py-8 relative">
+              <p className="text-6xl md:text-8xl font-light mb-4 text-white tracking-tighter" style={{ textShadow: '0 0 40px rgba(255,255,255,0.1)' }}>
+                ${balance ? formatUsdc(balance.balanceUsdc) : '0.00'}
               </p>
+              <p className="text-sm text-white/30 font-mono">USDC / SOLANA</p>
             </div>
 
             {balance?.fundsLocked && (
-              <p className="text-sm text-amber-400/80 mt-2">⚠ some funds locked in active bets</p>
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500/80 text-xs mt-4">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                Funds locked in active bets
+              </div>
             )}
 
-            {/* Deposit Form */}
-            {showDeposit && (
-              <form onSubmit={handleDeposit} style={{
-                marginTop: '32px',
-                padding: '32px',
-                border: '1px solid rgba(255, 255, 255, 0.3)',
-                borderRadius: '16px',
-                maxWidth: '600px',
-                margin: '32px auto 0',
-                textAlign: 'left'
-              }}>
-                <p style={{ fontSize: '18px', color: 'rgba(255, 255, 255, 0.8)', marginBottom: '16px' }}>deposit USDC to bet in this group</p>
-                <input
-                  type="number"
-                  value={transactionAmount}
-                  onChange={(e) => setTransactionAmount(e.target.value)}
-                  placeholder="amount in USDC"
-                  step="0.01"
-                  min="0.01"
-                  style={{
-                    width: '100%',
-                    fontSize: '20px',
-                    padding: '16px 0',
-                    border: 'none',
-                    borderBottom: '2px solid rgba(255, 255, 255, 0.4)',
-                    background: 'transparent',
-                    marginBottom: '16px',
-                    color: 'white',
-                    outline: 'none'
-                  }}
-                  autoFocus
-                />
-                {transactionError && (
-                  <p style={{ color: '#ef4444', marginBottom: '16px' }}>{transactionError}</p>
-                )}
-                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-                  <WalletMultiButton style={{ background: '#333', height: '40px', fontSize: '14px' }} />
-                  <button
-                    onClick={() => router.push('/dashboard')}
-                    style={{ padding: '8px 16px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.1)', color: 'white', border: 'none', cursor: 'pointer' }}
-                  >
-                    back to home
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={!transactionAmount || isTransacting}
-                    style={{
-                      fontSize: '20px',
-                      color: !transactionAmount || isTransacting ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.8)',
-                      background: 'none',
-                      border: 'none',
-                      cursor: !transactionAmount || isTransacting ? 'not-allowed' : 'pointer',
-                      transition: 'color 0.2s'
-                    }}
-                  >
-                    {isTransacting ? 'depositing...' : 'deposit →'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setShowDeposit(false); setTransactionAmount(''); setTransactionError(null); }}
-                    style={{ fontSize: '20px', color: 'rgba(255, 255, 255, 0.5)', background: 'none', border: 'none', cursor: 'pointer' }}
-                  >
-                    cancel
-                  </button>
-                </div>
-              </form>
-            )}
+            {/* Transaction Forms - Keeping functional logic but improving style */}
+            {(showDeposit || showWithdraw) && (
+              <div className="mt-8 animate-in fade-in slide-in-from-bottom-4 duration-300">
+                <form
+                  onSubmit={showDeposit ? handleDeposit : handleWithdraw}
+                  className="max-w-md mx-auto p-8 rounded-2xl border border-white/10 bg-black/50 backdrop-blur-xl"
+                >
+                  <h3 className="text-lg text-white mb-6 font-light">
+                    {showDeposit ? 'Deposit Funds' : 'Withdraw Funds'}
+                  </h3>
 
-            {/* Withdraw Form */}
-            {showWithdraw && (
-              <form onSubmit={handleWithdraw} style={{
-                marginTop: '32px',
-                padding: '32px',
-                border: '1px solid rgba(255, 255, 255, 0.3)',
-                borderRadius: '16px',
-                maxWidth: '600px',
-                margin: '32px auto 0',
-                textAlign: 'left'
-              }}>
-                <p style={{ fontSize: '18px', color: 'rgba(255, 255, 255, 0.8)', marginBottom: '16px' }}>withdraw USDC from this group</p>
-                <input
-                  type="number"
-                  value={transactionAmount}
-                  onChange={(e) => setTransactionAmount(e.target.value)}
-                  placeholder="amount in USDC"
-                  step="0.01"
-                  min="0.01"
-                  style={{
-                    width: '100%',
-                    fontSize: '20px',
-                    padding: '16px 0',
-                    border: 'none',
-                    borderBottom: '2px solid rgba(255, 255, 255, 0.4)',
-                    background: 'transparent',
-                    marginBottom: '16px',
-                    color: 'white',
-                    outline: 'none'
-                  }}
-                  autoFocus
-                />
-                {transactionError && (
-                  <p style={{ color: '#ef4444', marginBottom: '16px' }}>{transactionError}</p>
-                )}
-                <div style={{ display: 'flex', gap: '32px' }}>
-                  <button
-                    type="submit"
-                    disabled={!transactionAmount || isTransacting}
-                    style={{
-                      fontSize: '20px',
-                      color: !transactionAmount || isTransacting ? 'rgba(255, 255, 255, 0.4)' : 'rgba(255, 255, 255, 0.8)',
-                      background: 'none',
-                      border: 'none',
-                      cursor: !transactionAmount || isTransacting ? 'not-allowed' : 'pointer',
-                      transition: 'color 0.2s'
-                    }}
-                  >
-                    {isTransacting ? 'withdrawing...' : 'withdraw →'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setShowWithdraw(false); setTransactionAmount(''); setTransactionError(null); }}
-                    style={{ fontSize: '20px', color: 'rgba(255, 255, 255, 0.5)', background: 'none', border: 'none', cursor: 'pointer' }}
-                  >
-                    cancel
-                  </button>
-                </div>
-              </form>
+                  <div className="relative mb-8">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-white/30 text-xl">$</span>
+                    <input
+                      type="number"
+                      value={transactionAmount}
+                      onChange={(e) => setTransactionAmount(e.target.value)}
+                      placeholder="0.00"
+                      step="0.01"
+                      min="0.01"
+                      className="w-full bg-transparent border-b border-white/20 py-4 pl-10 pr-4 text-3xl text-white placeholder-white/10 focus:outline-none focus:border-white/50 transition-colors"
+                      autoFocus
+                    />
+                  </div>
+
+                  {transactionError && (
+                    <p className="text-red-400 text-sm mb-6 bg-red-500/10 py-2 px-3 rounded text-center">{transactionError}</p>
+                  )}
+
+                  <div className="flex gap-4">
+                    <button
+                      type="submit"
+                      disabled={!transactionAmount || isTransacting}
+                      className="flex-1 py-3 px-6 rounded-xl bg-white text-black font-medium hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                    >
+                      {isTransacting ? 'Processing...' : (showDeposit ? 'Confirm Deposit' : 'Confirm Withdraw')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowDeposit(false); setShowWithdraw(false); setTransactionAmount(''); setTransactionError(null); }}
+                      className="px-6 py-3 rounded-xl border border-white/10 text-white/60 hover:text-white hover:bg-white/5 transition-all"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              </div>
             )}
           </section>
 
@@ -620,130 +541,95 @@ export default function GroupPage() {
           <section style={{
             width: '100%',
             padding: '32px',
-            borderRadius: '16px',
-            background: 'rgba(255, 255, 255, 0.03)',
-            backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            boxSizing: 'border-box'
+            borderRadius: '24px',
+            background: '#080808', // Darker background
+            border: '1px solid #1a1a1a', // Subtle border
+            boxSizing: 'border-box',
+            marginTop: '48px'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px' }}>
-              <h2 style={{ fontSize: '20px', fontWeight: '500', color: 'rgba(255, 255, 255, 0.9)', margin: 0 }}>new bets</h2>
+              <div className="flex items-center gap-3">
+                <h2 style={{ fontSize: '24px', fontWeight: '500', color: '#fff', margin: 0 }}>Markets</h2>
+                <span className="px-2 py-0.5 rounded bg-white/10 text-white/50 text-xs font-mono">{events.length}</span>
+              </div>
               {!showCreate && (
                 <button
                   onClick={() => setShowCreate(true)}
-                  className="text-sm px-4 py-2 rounded-full bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-all"
+                  className="text-sm px-6 py-2.5 rounded-full bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-lg shadow-indigo-900/20 font-medium"
                 >
-                  + new market
+                  + New Market
                 </button>
               )}
             </div>
 
             {/* Create Market Modal */}
             {showCreate && (
-              <div style={{
-                position: 'fixed',
-                top: 0,
-                left: 0,
-                width: '100vw',
-                height: '100vh',
-                background: 'rgba(0, 0, 0, 0.6)',
-                backdropFilter: 'blur(12px)',
-                zIndex: 1000,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: '20px'
-              }}>
-                <div style={{
-                  background: '#090909',
-                  border: '1px solid #222',
-                  borderRadius: '24px',
-                  padding: '40px',
-                  width: '100%',
-                  maxWidth: '550px',
-                  boxShadow: '0 50px 100px -20px rgba(0,0,0,0.9)'
-                }}>
-                  <h2 style={{ fontSize: '20px', marginBottom: '32px', textAlign: 'center', color: '#fff' }}>New Market</h2>
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                <div
+                  className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+                  onClick={() => setShowCreate(false)}
+                />
+                <div className="relative w-full max-w-lg bg-[#0a0a0a] border border-[#333] rounded-3xl p-8 shadow-2xl animate-in zoom-in-95 duration-200">
+                  <h2 className="text-2xl font-light text-white mb-8 text-center">Create New Market</h2>
 
                   <form onSubmit={handleCreateMarket}>
-                    <div style={{ marginBottom: '24px' }}>
-                      <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Question</label>
+                    <div className="mb-6">
+                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Question</label>
                       <input
                         type="text"
                         value={title}
                         onChange={(e) => setTitle(e.target.value)}
-                        placeholder="e.g. Will SOL hit $200?"
-                        style={{ width: '100%', padding: '16px', background: '#111', border: '1px solid #333', borderRadius: '8px', color: 'white', fontSize: '16px', outline: 'none' }}
+                        placeholder="e.g. Will SOL hit $250 by Friday?"
+                        className="w-full bg-[#111] border border-[#222] rounded-xl p-4 text-white text-lg focus:outline-none focus:border-indigo-500/50 transition-colors"
                         autoFocus
                       />
                     </div>
 
-                    <div style={{ marginBottom: '24px' }}>
-                      <label style={{ display: 'block', fontSize: '14px', color: '#888', marginBottom: '8px' }}>Outcomes</label>
-                      <div style={{ display: 'flex', gap: '12px' }}>
+                    <div className="mb-6">
+                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Outcomes</label>
+                      <div className="flex gap-3">
                         <input
                           type="text"
                           value={outcome1}
                           onChange={(e) => setOutcome1(e.target.value)}
-                          placeholder="Yes"
-                          style={{ flex: 1, padding: '16px', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px', color: 'white', outline: 'none' }}
+                          className="flex-1 bg-[#111] border border-[#222] rounded-xl p-3 text-white text-center focus:outline-none focus:border-indigo-500/50"
                         />
                         <input
                           type="text"
                           value={outcome2}
                           onChange={(e) => setOutcome2(e.target.value)}
-                          placeholder="No"
-                          style={{ flex: 1, padding: '16px', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px', color: 'white', outline: 'none' }}
+                          className="flex-1 bg-[#111] border border-[#222] rounded-xl p-3 text-white text-center focus:outline-none focus:border-indigo-500/50"
                         />
                       </div>
                     </div>
 
-                    <div style={{ marginBottom: '24px' }}>
-                      <label style={{ display: 'block', fontSize: '14px', color: '#888', marginBottom: '8px' }}>Settlement Mode</label>
+                    <div className="mb-8">
+                      <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Settlement</label>
                       <select
                         value={settlementType}
                         onChange={(e) => setSettlementType(e.target.value as any)}
-                        style={{ width: '100%', padding: '16px', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px', color: 'white', outline: 'none', appearance: 'none' }}
+                        className="w-full bg-[#111] border border-[#222] rounded-xl p-4 text-white/80 focus:outline-none appearance-none"
                       >
-                        <option value="manual">Manual / Arbiter</option>
+                        <option value="manual">Manual (Arbiter Settles)</option>
                         <option value="oracle">Oracle (Automated)</option>
                         <option value="consensus">Group Consensus</option>
                       </select>
                     </div>
 
-                    {settlementType === 'manual' && (
-                      <div style={{ marginBottom: '32px' }}>
-                        <label style={{ display: 'block', fontSize: '14px', color: '#888', marginBottom: '8px' }}>Arbiter</label>
-                        <select
-                          value={arbiterWallet}
-                          onChange={(e) => setArbiterWallet(e.target.value)}
-                          style={{ width: '100%', padding: '16px', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px', color: 'white', outline: 'none', appearance: 'none' }}
-                        >
-                          <option value="">Select arbiter (defaults to you)</option>
-                          {members.map(member => (
-                            <option key={member.userId} value={member.walletAddress}>
-                              {member.walletAddress.slice(0, 6)}...{member.walletAddress.slice(-4)}
-                              {member.role === 'admin' ? ' (Admin)' : ''}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    <div style={{ display: 'flex', gap: '16px' }}>
+                    <div className="flex gap-4">
                       <button
                         type="button"
                         onClick={() => setShowCreate(false)}
-                        style={{ flex: 1, padding: '16px', borderRadius: '12px', background: 'transparent', border: '1px solid rgba(255, 255, 255, 0.2)', color: 'white', cursor: 'pointer' }}
+                        className="flex-1 py-4 rounded-xl border border-[#333] text-gray-400 hover:text-white hover:bg-[#111] transition-all"
                       >
                         Cancel
                       </button>
                       <button
                         type="submit"
                         disabled={!title.trim() || isCreating}
-                        style={{ flex: 1, padding: '16px', borderRadius: '12px', background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', border: 'none', color: 'white', fontWeight: '500', cursor: 'pointer', opacity: (!title.trim() || isCreating) ? 0.5 : 1 }}
+                        className="flex-1 py-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                       >
-                        {isCreating ? 'Creating...' : 'Create Market'}
+                        {isCreating ? 'Creating...' : 'Launch Market'}
                       </button>
                     </div>
                   </form>
@@ -753,7 +639,7 @@ export default function GroupPage() {
 
             {/* Markets List */}
             {events.length > 0 ? (
-              <ul style={{ display: 'flex', flexDirection: 'column', gap: '16px', listStyle: 'none', padding: 0, margin: 0 }}>
+              <ul className="flex flex-col gap-3">
                 {events.map((event) => {
                   const eventPrices = prices[event.eventId];
                   const isActive = event.status === 'active';
@@ -762,109 +648,72 @@ export default function GroupPage() {
                     <li key={event.eventId}>
                       <button
                         onClick={() => router.push(`/event/${event.eventId}`)}
-                        style={{
-                          width: '100%',
-                          textAlign: 'left',
-                          padding: '32px 24px',
-                          border: '1px solid rgba(255, 255, 255, 0.2)',
-                          borderRadius: '8px',
-                          background: 'transparent',
-                          transition: 'all 0.2s',
-                          cursor: 'pointer',
-                          display: 'block',
-                          position: 'relative'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.4)';
-                          e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
-                          e.currentTarget.style.background = 'transparent';
-                        }}
+                        className="w-full text-left p-6 rounded-2xl bg-[#0d0d0d] border border-[#222] hover:border-[#444] hover:bg-[#111] transition-all group relative overflow-hidden"
                       >
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <p style={{ fontSize: '24px', marginBottom: '16px', color: 'white', margin: '0 0 16px 0', flex: 1 }}>{event.title}</p>
+                        <div className="flex justify-between items-start relative z-10">
+                          <div className="flex-1">
+                            <h3 className="text-xl text-white mb-4 font-light group-hover:text-indigo-300 transition-colors">{event.title}</h3>
 
-                          {group?.adminWallet === user.walletAddress && (
-                            <div
-                              role="button"
-                              onClick={(e) => handleDeleteEvent(event.eventId, e)}
-                              style={{
-                                color: 'rgba(255, 50, 50, 0.6)',
-                                fontSize: '14px',
-                                padding: '4px 8px',
-                                border: '1px solid rgba(255, 50, 50, 0.3)',
-                                borderRadius: '4px',
-                                marginLeft: '16px',
-                                transition: 'all 0.2s',
-                                zIndex: 10
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.color = 'rgba(255, 50, 50, 1)';
-                                e.currentTarget.style.borderColor = 'rgba(255, 50, 50, 0.8)';
-                                e.currentTarget.style.background = 'rgba(255, 50, 50, 0.1)';
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.color = 'rgba(255, 50, 50, 0.6)';
-                                e.currentTarget.style.borderColor = 'rgba(255, 50, 50, 0.3)';
-                                e.currentTarget.style.background = 'transparent';
-                              }}
-                            >
-                              delete
+                            <div className="flex items-center gap-6">
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-xs text-gray-500 uppercase tracking-wide">Volume</span>
+                                <span className="text-sm text-gray-300 font-mono">
+                                  {eventPrices ? formatVolume(eventPrices.totalVolume) : '$0'}
+                                </span>
+                              </div>
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-xs text-gray-500 uppercase tracking-wide">Expiry</span>
+                                <span className="text-sm text-gray-300 font-mono">
+                                  {event.resolveBy ? new Date(event.resolveBy * 1000).toLocaleDateString() : 'Never'}
+                                </span>
+                              </div>
                             </div>
-                          )}
+                          </div>
+
+                          {/* Probabilities (Visual) */}
+                          <div className="flex gap-1 items-end h-12 ml-6 opacity-40 group-hover:opacity-100 transition-opacity">
+                            <div className="w-1.5 bg-green-500 rounded-t" style={{ height: '60%' }} />
+                            <div className="w-1.5 bg-red-500 rounded-t" style={{ height: '40%' }} />
+                          </div>
                         </div>
 
-                        {isActive && eventPrices && (
-                          <div style={{ display: 'flex', gap: '40px', fontSize: '18px' }}>
-                            {event.outcomes.map((outcome) => (
-                              <span key={outcome} style={{ color: 'rgba(255, 255, 255, 0.7)' }}>
-                                <span style={{ color: 'white', fontWeight: '500' }}>{formatPrice(eventPrices.prices[outcome] || 0.5)}</span>
-                                {' '}{outcome}
-                              </span>
-                            ))}
-                            {eventPrices.totalVolume > 0 && (
-                              <span style={{ color: 'rgba(255, 255, 255, 0.5)' }}>
-                                {formatUsdc(eventPrices.totalVolume)} vol
-                              </span>
-                            )}
+                        {/* Admin Delete Button */}
+                        {group?.adminWallet === user.walletAddress && (
+                          <div
+                            className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity z-20"
+                            onClick={(e) => handleDeleteEvent(event.eventId, e)}
+                          >
+                            <div className="p-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all text-xs">
+                              Delete
+                            </div>
                           </div>
                         )}
 
-                        {event.status === 'resolved' && (
-                          <p style={{ fontSize: '18px', color: 'rgba(255, 255, 255, 0.6)', margin: 0 }}>
-                            resolved: <span style={{ color: 'rgba(255, 255, 255, 0.8)', fontStyle: 'italic' }}>{event.winningOutcome}</span>
-                          </p>
-                        )}
+                        {/* Status Indicator */}
+                        <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-white/5 to-transparent rounded-bl-full pointer-events-none`} />
                       </button>
                     </li>
                   );
                 })}
               </ul>
-            ) : !showCreate ? (
-              <div style={{ padding: '64px 0', textAlign: 'center' }}>
-                <p style={{ fontSize: '24px', color: 'rgba(255, 255, 255, 0.6)', fontStyle: 'italic', marginBottom: '40px' }}>
-                  no markets yet.
-                </p>
+            ) : (
+              /* Empty State */
+              <div className="py-20 text-center rounded-2xl bg-[#0a0a0a] border border-dashed border-[#222]">
+                <div className="w-16 h-16 rounded-full bg-[#111] flex items-center justify-center mx-auto mb-6 text-2xl">
+                  🎲
+                </div>
+                <h3 className="text-lg text-white mb-2">No active markets</h3>
+                <p className="text-gray-500 text-sm mb-8">Be the first to create a prediction market in this group.</p>
                 <button
                   onClick={() => setShowCreate(true)}
-                  style={{
-                    fontSize: '24px',
-                    color: 'rgba(255, 255, 255, 0.8)',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    transition: 'color 0.2s'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.color = 'white'}
-                  onMouseLeave={(e) => e.currentTarget.style.color = 'rgba(255, 255, 255, 0.8)'}
+                  className="text-sm px-6 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-white transition-all border border-white/10 hover:border-white/20"
                 >
-                  create the first market →
+                  Create Market
                 </button>
               </div>
-            ) : null}
-          </section>
+            )}
+
+          </section >
         </div >
       </main >
     </div >

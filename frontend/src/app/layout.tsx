@@ -26,7 +26,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={ebGaramond.className}>
+    <html lang="en" className={ebGaramond.className} suppressHydrationWarning>
       <body className={ebGaramond.className}>
         <ClientWalletProvider>
           {children}

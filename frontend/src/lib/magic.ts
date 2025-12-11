@@ -25,15 +25,13 @@ export function getMagic(): any {
     const publishableKey = process.env.NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY;
     
     if (!publishableKey || publishableKey.includes('YOUR_KEY_HERE')) {
-      console.warn('Magic.link key not configured - using mock for development');
-      magic = createMockMagic();
-      return magic;
+      console.warn('Magic.link key not configured!');
+      return null;
     }
 
     if (!publishableKey.startsWith('pk_')) {
-      console.error('Invalid Magic key. Use your publishable key (pk_test_xxx or pk_live_xxx)');
-      magic = createMockMagic();
-      return magic;
+      console.error('Invalid Magic key.');
+      return null;
     }
 
     magic = new Magic(publishableKey, {
@@ -71,30 +69,7 @@ export async function loginWithEmail(email: string): Promise<string | null> {
  * Restore a mock session directly (for dev mode session restoration)
  * This creates the mock_user without requiring email verification
  */
-export function restoreMockSession(email: string): { walletAddress: string } {
-  console.log('[MAGIC] restoreMockSession called for:', email);
-  
-  // Generate FULLY deterministic wallet from email (same logic as mock login)
-  let hash = 0;
-  for (let i = 0; i < email.length; i++) {
-    const char = email.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32bit integer
-  }
-  const hashStr = Math.abs(hash).toString(36);
-  const mockWallet = `Dev${hashStr.padStart(8, '0')}`;
-  
-  const userData = {
-    email,
-    publicAddress: mockWallet,
-    issuer: `did:ethr:${mockWallet}`,
-  };
-  
-  localStorage.setItem('mock_user', JSON.stringify(userData));
-  console.log('[MAGIC] Session restored:', email, '→', mockWallet);
-  
-  return { walletAddress: mockWallet };
-}
+
 
 /**
  * Logout and clear session
@@ -252,58 +227,4 @@ export async function signAndSendTransaction(transaction: unknown): Promise<stri
 // ===========================================
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function createMockMagic(): any {
-  console.log('🔧 Using mock Magic.link for development');
-  
-  const mockMagic = {
-    user: {
-      isLoggedIn: async (): Promise<boolean> => {
-        return !!localStorage.getItem('mock_user');
-      },
-      getMetadata: async () => {
-        const stored = localStorage.getItem('mock_user');
-        return stored ? JSON.parse(stored) : null;
-      },
-      logout: async (): Promise<boolean> => {
-        localStorage.removeItem('mock_user');
-        return true;
-      },
-      getIdToken: async () => 'mock_id_token',
-    },
-    auth: {
-      loginWithMagicLink: async ({ email }: { email: string }): Promise<string | null> => {
-        // Simulate login delay
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        // Generate FULLY deterministic wallet from email (no random!)
-        // This ensures the same email always gets the same wallet
-        let hash = 0;
-        for (let i = 0; i < email.length; i++) {
-          const char = email.charCodeAt(i);
-          hash = ((hash << 5) - hash) + char;
-          hash = hash & hash; // Convert to 32bit integer
-        }
-        const hashStr = Math.abs(hash).toString(36);
-        const mockWallet = `Dev${hashStr.padStart(8, '0')}`;
-        
-        const userData = {
-          email,
-          publicAddress: mockWallet,
-          issuer: `did:ethr:${mockWallet}`,
-        };
-        
-        localStorage.setItem('mock_user', JSON.stringify(userData));
-        console.log('✅ Mock login:', email, '→', mockWallet);
-        
-        return 'mock_did_token';
-      },
-    },
-    solana: {
-      signMessage: async () => new Uint8Array(64).fill(1),
-      signTransaction: async (tx: unknown) => tx,
-      signAndSendTransaction: async () => 'mock_tx_' + Date.now(),
-    },
-  };
-  
-  return mockMagic as unknown as Magic;
-}
+

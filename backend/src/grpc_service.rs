@@ -36,20 +36,31 @@ use proto::{
     DeleteGroupRequest, DeleteGroupResponse,
     DepositRequest, DepositResponse, WithdrawRequest, WithdrawResponse,
     BalanceRequest, BalanceResponse, ClaimRequest, ClaimResponse,
+    GetGroupEventsRequest, EventListResponse,
 };
+
+use crate::services::GroupService;
 
 /// gRPC service implementation
 pub struct MitraGrpcService {
     app_state: Arc<crate::AppState>,
     state_manager: Arc<StateManager>,
+    group_service: Arc<GroupService>,
 }
 
 impl MitraGrpcService {
     /// Create a new gRPC service
     pub fn new(app_state: Arc<crate::AppState>, state_manager: Arc<StateManager>) -> Self {
+        let group_service = Arc::new(GroupService::new(
+            app_state.friend_group_repo.clone(),
+            app_state.user_repo.clone(),
+            app_state.group_member_repo.clone(),
+        ));
+
         Self {
             app_state,
             state_manager,
+            group_service,
         }
     }
 
@@ -91,44 +102,22 @@ impl MitraService for MitraGrpcService {
         request: Request<CreateGroupRequest>,
     ) -> Result<Response<GroupResponse>, Status> {
         let req = request.into_inner();
-        info!("CreateFriendGroup request: name={}", req.name);
-
-        // Verify signature
-        auth::verify_auth_with_timestamp(
-            &req.admin_wallet,
-            "create_group",
-            chrono::Utc::now().timestamp(),
-            &req.signature,
-        )
-        .map_err(Self::to_status)?;
-
-        // Create group in database
+        
         let group = self
-            .app_state
-            .friend_group_repo
-            .create(&req.solana_pubkey, &req.name, &req.admin_wallet)
+            .group_service
+            .create_group(
+                &req.name, 
+                &req.admin_wallet, 
+                Some(&req.solana_pubkey), 
+                &req.signature, 
+                chrono::Utc::now().timestamp()
+            )
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
-
-        // Add admin as first member
-        let admin_user = self
-            .app_state
-            .user_repo
-            .find_or_create_by_wallet(&req.admin_wallet)
-            .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
-
-        self.app_state
-            .group_member_repo
-            .add_member(group.id, admin_user.id, crate::models::MemberRole::Admin)
-            .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
-
-        info!("Created friend group: {} ({})", group.id, group.name);
+            .map_err(Self::to_status)?;
 
         Ok(Response::new(GroupResponse {
             group_id: group.id.to_string(),
-            solana_pubkey: group.solana_pubkey,
+            solana_pubkey: group.solana_pubkey.unwrap_or_default(),
             name: group.name,
             admin_wallet: group.admin_wallet,
             created_at: group.created_at.and_utc().timestamp(),
@@ -142,57 +131,21 @@ impl MitraService for MitraGrpcService {
     ) -> Result<Response<MemberResponse>, Status> {
         let req = request.into_inner();
         let group_id = Self::parse_uuid(&req.group_id, "group_id")?;
-        
-        info!("InviteMember request: group={}, invited={}", group_id, req.invited_wallet);
 
-        // Verify signature
-        auth::verify_auth_with_timestamp(
-            &req.inviter_wallet,
-            "invite_member",
-            chrono::Utc::now().timestamp(),
-            &req.signature,
-        )
-        .map_err(Self::to_status)?;
-
-        // Verify inviter is admin or member
-        let inviter_user = self
-            .app_state
-            .user_repo
-            .find_or_create_by_wallet(&req.inviter_wallet)
+        let (invited_user, member) = self
+            .group_service
+            .invite_member(
+                group_id, 
+                &req.invited_wallet, 
+                &req.inviter_wallet, 
+                &req.signature, 
+                chrono::Utc::now().timestamp()
+            )
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
-
-        let is_member = self
-            .app_state
-            .group_member_repo
-            .is_member(group_id, inviter_user.id)
-            .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
-
-        if !is_member {
-            return Err(Status::permission_denied("Only group members can invite"));
-        }
-
-        // Find or create invited user
-        let invited_user = self
-            .app_state
-            .user_repo
-            .find_or_create_by_wallet(&req.invited_wallet)
-            .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
-
-        // Add as member
-        let member = self
-            .app_state
-            .group_member_repo
-            .add_member(group_id, invited_user.id, crate::models::MemberRole::Member)
-            .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
-
-        info!("Added member {} to group {}", invited_user.id, group_id);
+            .map_err(Self::to_status)?;
 
         Ok(Response::new(MemberResponse {
-            group_id: group_id.to_string(),
+            group_id: req.group_id,
             user_id: invited_user.id.to_string(),
             wallet_address: invited_user.wallet_address,
             role: "member".to_string(),
@@ -435,6 +388,47 @@ impl MitraService for MitraGrpcService {
                 total_volume: bets.iter().map(|b| b.amount_usdc.to_f64().unwrap_or(0.0)).sum::<f64>() + req.amount_usdc,
                 timestamp: chrono::Utc::now().timestamp(),
             }),
+        }))
+    }
+
+    /// Get all events for a group
+    async fn get_group_events(
+        &self,
+        request: Request<GetGroupEventsRequest>,
+    ) -> Result<Response<EventListResponse>, Status> {
+        let req = request.into_inner();
+        let group_id = Self::parse_uuid(&req.group_id, "group_id")?;
+
+        info!("GetGroupEvents request: group={}", group_id);
+        
+        // Fetch events
+        let events = self
+            .app_state
+            .event_repo
+            .find_by_group(group_id)
+            .await
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+
+        // Convert to proto response
+        let proto_events: Vec<EventResponse> = events
+            .into_iter()
+            .map(|e| EventResponse {
+                event_id: e.id.to_string(),
+                group_id: e.group_id.to_string(),
+                solana_pubkey: e.solana_pubkey.unwrap_or_default(),
+                title: e.title,
+                description: e.description.unwrap_or_default(),
+                outcomes: e.outcomes.as_array().unwrap_or(&vec![]).iter().map(|v| v.as_str().unwrap_or("").to_string()).collect(),
+                settlement_type: e.settlement_type,
+                status: e.status.as_str().to_string(),
+                resolve_by: e.resolve_by.map(|dt| dt.and_utc().timestamp()).unwrap_or(0),
+                created_at: e.created_at.and_utc().timestamp(),
+                arbiter_wallet: e.arbiter_wallet.unwrap_or_default(),
+            })
+            .collect();
+
+        Ok(Response::new(EventListResponse {
+            events: proto_events,
         }))
     }
 
@@ -763,45 +757,28 @@ impl MitraService for MitraGrpcService {
     }
 
     /// Delete a friend group
+    /// Delete a friend group
     async fn delete_group(
         &self,
         request: Request<DeleteGroupRequest>,
     ) -> Result<Response<DeleteGroupResponse>, Status> {
         let req = request.into_inner();
-        let group_pubkey = &req.group_id; 
+        let group_id = Self::parse_uuid(&req.group_id, "group_id")?;
         
-        info!("DeleteGroup request: group={}", group_pubkey);
-
-        // Verify signature
-        auth::verify_auth_with_timestamp(
-            &req.admin_wallet,
-            "delete_group",
-            chrono::Utc::now().timestamp(),
-            &req.signature,
-        )
-        .map_err(Self::to_status)?;
-
-        // Find group
-        let group = self
-            .app_state
-            .friend_group_repo
-            .find_by_solana_pubkey(group_pubkey)
-            .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?
-            .ok_or_else(|| Status::not_found("Group not found"))?;
-
-        // Verify admin
-        if group.admin_wallet != req.admin_wallet {
-            return Err(Status::permission_denied("Only the group admin can delete the group"));
-        }
-
-        // Delete group
+        // This accepts UUID but the proto field is confusingly named group_pubkey or just group_id in recent versions.
+        // The original code used group_pubkey for lookup but delete needs ID.
+        // Assuming request sends ID string now based on client usage.
+        
         let deleted = self
-            .app_state
-            .friend_group_repo
-            .delete(group.id)
+            .group_service
+            .delete_group(
+                group_id, 
+                &req.admin_wallet, 
+                &req.signature, 
+                chrono::Utc::now().timestamp()
+            )
             .await
-            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+            .map_err(Self::to_status)?;
 
         Ok(Response::new(DeleteGroupResponse {
             success: deleted,
@@ -966,12 +943,39 @@ impl MitraService for MitraGrpcService {
     }
 
     /// Get user balance in a group
+    /// Get user balance in a group
     async fn get_user_balance(
         &self,
         request: Request<BalanceRequest>,
     ) -> Result<Response<BalanceResponse>, Status> {
         let req = request.into_inner();
         
+        // 1. Check DB membership first
+        // Find group by Solana Pubkey
+        let group = self.app_state.friend_group_repo
+            .find_by_solana_pubkey(&req.group_id)
+            .await
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?
+            .ok_or_else(|| Status::not_found("Group not found"))?;
+
+        // Find user by wallet
+        let user = self.app_state.user_repo
+            .find_by_wallet(&req.user_wallet)
+            .await
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?
+            .ok_or_else(|| Status::not_found("User not found"))?;
+
+        // Check if member
+        let is_member = self.app_state.group_member_repo
+            .is_member(group.id, user.id)
+            .await
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+
+        if !is_member {
+            return Err(Status::not_found("Member not found in group"));
+        }
+
+        // 2. Try to get on-chain balance
         let balance = self.app_state.solana_client
             .get_member_balance(&req.group_id, &req.user_wallet)
             .await
@@ -983,7 +987,14 @@ impl MitraService for MitraGrpcService {
                 balance_usdc: bal.balance_usdc,
                 funds_locked: bal.locked_funds,
             })),
-            None => Err(Status::not_found("Member not found in group")),
+            None => {
+                // Member exists in DB but not on-chain yet -> Return 0 balance
+                Ok(Response::new(BalanceResponse {
+                    balance_sol: 0,
+                    balance_usdc: 0,
+                    funds_locked: false,
+                }))
+            }
         }
     }
 

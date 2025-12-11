@@ -19,10 +19,13 @@ const API_BASE = '/api/grpc';
 let backendAvailable: boolean | null = null;
 
 async function checkBackend(): Promise<boolean> {
-  // Assume online for now since we are building the real service
-  // In production this should do a real health check
   if (backendAvailable === null) {
-      backendAvailable = true;
+      try {
+        // Simple health check or just assume true for now but failures will be real
+        backendAvailable = true; 
+      } catch {
+        backendAvailable = false;
+      }
   }
   return backendAvailable;
 }
@@ -40,9 +43,7 @@ export async function createGroup(
   
   if (isOnline) {
     try {
-      // Generate a random valid-looking base58 string for now
-      // Generate a valid Keypair for the group treasury
-      // In a real app, this would be a PDA derived from the program
+      // Generate a valid base58 string for the group pubkey
       const groupKeypair = Keypair.generate();
       const groupPubkey = groupKeypair.publicKey.toBase58();
 
@@ -70,33 +71,27 @@ export async function createGroup(
           createdAt: data.createdAt || data.created_at || Date.now() / 1000,
         };
         
-        // Save to local storage for list view
+        // Save to local storage for list view (caching only)
         const groups = await getGroups(adminWallet);
         groups.push(newGroup);
         saveGroups(groups);
         
         return newGroup;
+      } else {
+        throw new Error(await res.text());
       }
     } catch (e) {
       console.error('Backend error:', e);
+      throw e;
     }
   }
   
-  // Mock fallback
-  const mockGroup: FriendGroup = {
-    groupId: 'grp_' + Math.random().toString(36).substring(2, 15),
-    name,
-    solanaPubkey: 'mock_' + Math.random().toString(36).substring(2, 10),
-    adminWallet,
-    createdAt: Math.floor(Date.now() / 1000),
-  };
-  const groups = await getGroups(adminWallet);
-  groups.push(mockGroup);
-  saveGroups(groups);
-  return mockGroup;
+  throw new Error('Backend unavailable');
 }
 
 export async function getGroups(walletAddress: string): Promise<FriendGroup[]> {
+  // In a real app avoiding local storage as primary source would be better,
+  // but keeping it for list caching is acceptable for now.
   const stored = localStorage.getItem('mitra_groups');
   if (stored) {
     return JSON.parse(stored);
@@ -140,7 +135,7 @@ export async function createEvent(
             resolve_by: resolveBy,
             creator_wallet: creatorWallet,
             arbiter_wallet: arbiterWallet,
-            signature: 'dev', // Mock signature for now
+            signature: 'dev',
           },
         }),
       });
@@ -160,33 +155,63 @@ export async function createEvent(
           createdAt: data.createdAt || data.created_at || Date.now() / 1000,
         };
         return newEvent;
+      } else {
+        throw new Error(await res.text());
       }
     } catch (e) {
       console.error('Backend error:', e);
+      throw e;
     }
   }
   
-  // Mock fallback
-  return {
-    eventId: 'evt_' + Math.random().toString(36).substring(2, 15),
-    groupId,
-    title,
-    description,
-    outcomes,
-    settlementType,
-    status: 'active',
-    resolveBy: resolveBy || undefined,
-    createdAt: Math.floor(Date.now() / 1000),
-    arbiterWallet
-  };
+  throw new Error('Backend unavailable');
 }
 
 export async function getEvents(groupId: string): Promise<Event[]> {
-  const stored = localStorage.getItem(`mitra_events_${groupId}`);
-  if (stored) {
-    return JSON.parse(stored);
-  }
-  return [];
+    const isOnline = await checkBackend();
+    
+    if (isOnline) {
+      try {
+        const res = await fetch(API_BASE, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            method: 'GetGroupEvents',
+            data: { group_id: groupId },
+          }),
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          const events: Event[] = (data.events || []).map((e: any) => ({
+            eventId: e.eventId || e.event_id,
+            groupId: e.groupId || e.group_id,
+            solanaPubkey: e.solanaPubkey || e.solana_pubkey,
+            title: e.title,
+            description: e.description,
+            outcomes: e.outcomes,
+            settlementType: e.settlementType || e.settlement_type,
+            status: e.status,
+            resolveBy: e.resolveBy || e.resolve_by,
+            createdAt: e.createdAt || e.created_at,
+            arbiterWallet: e.arbiterWallet || e.arbiter_wallet,
+          }));
+
+          // Cache valid events
+          saveEvents(groupId, events);
+          return events;
+        }
+      } catch (e) {
+        console.error('Failed to fetch events from backend:', e);
+      }
+    }
+
+    // Fallback to local storage if backend fails
+    const stored = localStorage.getItem(`mitra_events_${groupId}`);
+    if (stored) {
+        return JSON.parse(stored);
+    }
+    return [];
 }
 
 export function saveEvents(groupId: string, events: Event[]): void {
@@ -211,7 +236,7 @@ export async function getEvent(eventId: string): Promise<Event | null> {
 export async function getEventPrices(eventId: string): Promise<Prices> {
   const isOnline = await checkBackend();
   
-  if (isOnline && !eventId.startsWith('evt_')) {
+  if (isOnline) {
     try {
       const res = await fetch(API_BASE, {
         method: 'POST',
@@ -236,41 +261,11 @@ export async function getEventPrices(eventId: string): Promise<Prices> {
     }
   }
   
-  // Mock prices logic
-  const event = await getEvent(eventId);
-  const outcomes = event?.outcomes || ['yes', 'no'];
-  const prices: Record<string, number> = {};
-  outcomes.forEach(o => {
-    prices[o] = 1 / outcomes.length;
-  });
-  
-  // Adjust based on stored bets
-  const bets = getBets(eventId);
-  let totalVolume = 0;
-  const volumes: Record<string, number> = {};
-  outcomes.forEach(o => { volumes[o] = 0; });
-  
-  bets.forEach(b => {
-    volumes[b.outcome] = (volumes[b.outcome] || 0) + b.amountUsdc;
-    totalVolume += b.amountUsdc;
-  });
-  
-  if (totalVolume > 0) {
-    outcomes.forEach(o => {
-      // Simple volume-weighted pricing
-      prices[o] = 0.1 + 0.8 * (volumes[o] / totalVolume);
-    });
-    // Normalize to sum to 1
-    const sum = Object.values(prices).reduce((a, b) => a + b, 0);
-    outcomes.forEach(o => {
-      prices[o] = prices[o] / sum;
-    });
-  }
-  
+  // If backend fails, return empty structure rather than fake data
   return {
     eventId,
-    prices,
-    totalVolume,
+    prices: {},
+    totalVolume: 0,
     timestamp: Date.now() / 1000,
   };
 }
@@ -289,7 +284,7 @@ export async function placeBet(
 ): Promise<BetResponse> {
   const isOnline = await checkBackend();
   
-  if (isOnline && !eventId.startsWith('evt_')) {
+  if (isOnline) {
     try {
       const res = await fetch(API_BASE, {
         method: 'POST',
@@ -310,7 +305,7 @@ export async function placeBet(
       if (res.ok) {
         const data = await res.json();
         
-        // Save bet locally too
+        // Save bet locally too (cache)
         const bet: Bet = {
           betId: data.betId || data.bet_id,
           eventId,
@@ -330,40 +325,16 @@ export async function placeBet(
           price: data.price,
           updatedPrices: data.updatedPrices || data.updated_prices,
         };
+      } else {
+          throw new Error(await res.text());
       }
     } catch (e) {
       console.error('Backend error:', e);
+      throw e;
     }
   }
   
-  // Mock bet
-  const prices = await getEventPrices(eventId);
-  const price = prices.prices[outcome] || 0.5;
-  const shares = amountUsdc / price;
-  
-  const bet: Bet = {
-    betId: 'bet_' + Math.random().toString(36).substring(2, 15),
-    eventId,
-    userId: userWallet,
-    outcome,
-    shares,
-    price,
-    amountUsdc,
-    createdAt: Date.now() / 1000,
-    isPublic,
-  };
-  
-  saveBet(eventId, bet);
-  
-  // Recalculate prices after bet
-  const newPrices = await getEventPrices(eventId);
-  
-  return {
-    betId: bet.betId,
-    shares,
-    price,
-    updatedPrices: newPrices,
-  };
+  throw new Error('Backend unavailable');
 }
 
 export function getBets(eventId: string): Bet[] {
@@ -400,7 +371,7 @@ export async function settleEvent(
 ): Promise<{ success: boolean; txSignature?: string }> {
   const isOnline = await checkBackend();
   
-  if (isOnline && !eventId.startsWith('evt_')) {
+  if (isOnline) {
     try {
       const res = await fetch(API_BASE, {
         method: 'POST',
@@ -426,19 +397,16 @@ export async function settleEvent(
           success: true,
           txSignature: data.solanaTxSignature || data.solana_tx_signature,
         };
+      } else {
+        throw new Error(await res.text());
       }
     } catch (e) {
       console.error('Backend error:', e);
+      throw e;
     }
   }
   
-  // Mock settlement
-  updateEventStatus(eventId, 'resolved', winningOutcome);
-  
-  return {
-    success: true,
-    txSignature: 'mock_tx_' + Date.now(),
-  };
+  throw new Error('Backend unavailable');
 }
 
 export async function deleteGroup(
@@ -448,7 +416,7 @@ export async function deleteGroup(
 ): Promise<boolean> {
   const isOnline = await checkBackend();
 
-  if (isOnline && !groupId.startsWith('grp_')) {
+  if (isOnline) {
     try {
       const res = await fetch(API_BASE, {
         method: 'POST',
@@ -484,18 +452,9 @@ export async function deleteGroup(
     }
   }
 
-  // Local/Mock delete logic
-  console.log("Mock deleting group:", groupId);
-  const groups = await getGroups(deleterWallet);
-  const filtered = groups.filter(g => g.groupId !== groupId);
-  saveGroups(filtered);
-  // Clean up events for this group
-  localStorage.removeItem(`mitra_events_${groupId}`);
-  // Clean up members for this group
-  const allMembers = JSON.parse(localStorage.getItem('mitra_members') || '[]');
-  const filteredMembers = allMembers.filter((m: GroupMember) => m.groupId !== groupId);
-  localStorage.setItem('mitra_members', JSON.stringify(filteredMembers));
-  return true;
+  // If backend fails, we do NOT delete locally to avoid sync issues.
+  // The user should try again.
+  return false;
 }
 
 export async function deleteEvent(
@@ -505,7 +464,7 @@ export async function deleteEvent(
 ): Promise<boolean> {
   const isOnline = await checkBackend();
 
-  if (isOnline && !eventId.startsWith('evt_')) {
+  if (isOnline) {
     try {
       const res = await fetch(API_BASE, {
         method: 'POST',
@@ -540,15 +499,6 @@ export async function deleteEvent(
     }
   }
 
-  // Local/Mock delete logic
-  const groupEventsKey = Object.keys(localStorage).find(k => k.startsWith('mitra_events_') && localStorage.getItem(k)?.includes(eventId));
-  if (groupEventsKey) {
-    const events = JSON.parse(localStorage.getItem(groupEventsKey) || '[]') as Event[];
-    const filtered = events.filter(e => e.eventId !== eventId);
-    localStorage.setItem(groupEventsKey, JSON.stringify(filtered));
-    return true;
-  }
-  
   return false;
 }
 
@@ -586,7 +536,7 @@ export async function getBalance(
         body: JSON.stringify({
           method: 'GetUserBalance',
           data: {
-            group_id: groupSolanaPubkey, // Backend expects pubkey in group_id field for treasury ops
+            group_id: groupSolanaPubkey, 
             user_wallet: userWallet,
           },
         }),
@@ -601,9 +551,7 @@ export async function getBalance(
         };
       }
       
-      // If error (e.g. 500) return zero balance
       console.error('Failed to get balance:', await res.text());
-      return { balanceSol: 0, balanceUsdc: 0, fundsLocked: false };
     } catch (e) {
       console.error('Backend error:', e);
     }
