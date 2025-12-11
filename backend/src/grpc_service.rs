@@ -33,6 +33,7 @@ use proto::{
     CreateEventRequest, EventResponse, PlaceBetRequest, BetResponse,
     GetPricesRequest, PricesResponse, SettleEventRequest, SettleResponse,
     DeleteEventRequest, DeleteEventResponse,
+    DeleteGroupRequest, DeleteGroupResponse,
     DepositRequest, DepositResponse, WithdrawRequest, WithdrawResponse,
     BalanceRequest, BalanceResponse, ClaimRequest, ClaimResponse,
 };

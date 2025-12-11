@@ -12,6 +12,7 @@ service MitraService {
   rpc GetEventPrices(GetPricesRequest) returns (PricesResponse);
   rpc SettleEvent(SettleEventRequest) returns (SettleResponse);
   rpc DeleteEvent(DeleteEventRequest) returns (DeleteEventResponse);
+  rpc DeleteGroup(DeleteGroupRequest) returns (DeleteGroupResponse);
   
   // Betting
   rpc PlaceBet(PlaceBetRequest) returns (BetResponse);
@@ -57,7 +58,18 @@ message DeleteEventRequest {
 
 message DeleteEventResponse {
   bool success = 1;
-  string event_id = 2;
+  string message = 2;
+}
+
+message DeleteGroupRequest {
+  string group_id = 1;
+  string admin_wallet = 2;
+  string signature = 3; 
+}
+
+message DeleteGroupResponse {
+  bool success = 1;
+  string message = 2;
 }
 
 message MemberResponse {

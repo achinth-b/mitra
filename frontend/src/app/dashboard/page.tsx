@@ -16,6 +16,9 @@ import {
 } from '@/lib/api';
 import { BRAND } from '@/lib/brand';
 import type { FriendGroup, BalanceResponse } from '@/types';
+import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { SystemProgram, Transaction, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -27,6 +30,8 @@ export default function DashboardPage() {
   const [pageReady, setPageReady] = useState(false);
 
   // Wallet state
+  const { connection } = useConnection();
+  const { publicKey, sendTransaction, connected } = useWallet();
   const [balance, setBalance] = useState<BalanceResponse | null>(null);
   const [showDeposit, setShowDeposit] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
@@ -69,32 +74,64 @@ export default function DashboardPage() {
 
   const handleDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!transactionAmount || !user.walletAddress || groups.length === 0) return;
+    if (!user.walletAddress || !transactionAmount || groups.length === 0) return;
 
     setIsProcessing(true);
     setTransactionError(null);
-
     try {
-      const amountUsdc = parseUsdc(transactionAmount);
-      const firstGroup = groups[0];
+      // Use first group as default logic for now
+      const group = groups[0];
+      const amount = parseFloat(transactionAmount);
+      if (isNaN(amount) || amount <= 0) throw new Error("Invalid amount");
 
-      if (!firstGroup.solanaPubkey || firstGroup.solanaPubkey.includes('_')) {
-        throw new Error('Please create a group first to use wallet features');
+      let signature = 'dev';
+
+      // If wallet connected, perform real transfer
+      if (connected && publicKey) {
+        try {
+          // Check if group has valid pubkey (not mock)
+          if (!group.solanaPubkey || group.solanaPubkey.startsWith('mock_')) {
+            throw new Error("Group wallet not ready for real deposits (mock address)");
+          }
+
+          const transaction = new Transaction().add(
+            SystemProgram.transfer({
+              fromPubkey: publicKey,
+              toPubkey: new PublicKey(group.solanaPubkey),
+              lamports: amount * LAMPORTS_PER_SOL // Assuming amount is in SOL for this flow, or scale for USDC
+            })
+          );
+
+          const { blockhash } = await connection.getLatestBlockhash();
+          transaction.recentBlockhash = blockhash;
+          transaction.feePayer = publicKey;
+
+          signature = await sendTransaction(transaction, connection);
+          await connection.confirmTransaction(signature, 'processed');
+          console.log("Deposit Transaction confirmed:", signature);
+
+        } catch (txError) {
+          console.error("Wallet transaction failed:", txError);
+          setTransactionError("Wallet transaction failed. Check console.");
+          setIsProcessing(false);
+          return;
+        }
       }
 
-      const result = await deposit(firstGroup.solanaPubkey, user.walletAddress, amountUsdc);
+      const success = await deposit(group.solanaPubkey, user.walletAddress, amount, signature, 'sol');
 
-      if (result.success) {
-        setBalance({
-          balanceSol: result.newBalanceSol,
-          balanceUsdc: result.newBalanceUsdc,
-          fundsLocked: false,
-        });
-        setTransactionAmount('');
+      if (success) {
         setShowDeposit(false);
+        setTransactionAmount('');
+        // Refresh balance
+        const bal = await getBalance(group.solanaPubkey, user.walletAddress);
+        setBalance(bal);
+      } else {
+        setTransactionError("Deposit failed backend verification");
       }
-    } catch (error) {
-      setTransactionError(error instanceof Error ? error.message : 'Deposit failed');
+    } catch (e) {
+      console.error(e);
+      setTransactionError("Error processing deposit");
     } finally {
       setIsProcessing(false);
     }

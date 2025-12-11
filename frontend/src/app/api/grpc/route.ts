@@ -19,7 +19,8 @@ export async function POST(request: NextRequest) {
     // Use grpcurl to call the backend
     const grpcUrl = process.env.GRPC_BACKEND_URL || 'localhost:50051';
     
-    const command = `grpcurl -plaintext -d '${protoData.replace(/'/g, "\\'")}' ${grpcUrl} mitra.MitraService/${method}`;
+    const protoPath = '/Users/achinth/Desktop/Code/mitra/shared/proto/mitra.proto';
+    const command = `grpcurl -plaintext -import-path / -proto ${protoPath} -d '${protoData.replace(/'/g, "'\\''")}' ${grpcUrl} mitra.MitraService/${method}`;
     
     console.log('Executing gRPC call:', method);
     

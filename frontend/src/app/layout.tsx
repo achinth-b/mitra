@@ -10,6 +10,8 @@ const ebGaramond = EB_Garamond({
   variable: '--font-serif',
 });
 
+import { ClientWalletProvider } from '@/components/WalletProvider';
+
 export const metadata: Metadata = {
   title: BRAND.name,
   description: BRAND.description,
@@ -25,7 +27,11 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={ebGaramond.className}>
-      <body className={ebGaramond.className}>{children}</body>
+      <body className={ebGaramond.className}>
+        <ClientWalletProvider>
+          {children}
+        </ClientWalletProvider>
+      </body>
     </html>
   );
 }

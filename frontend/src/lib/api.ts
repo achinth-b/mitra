@@ -10,14 +10,8 @@
  * - SettleEvent
  */
 
-import type {
-  FriendGroup,
-  Event,
-  Bet,
-  Prices,
-  BetResponse,
-  GroupMember,
-} from '@/types';
+import { Connection, PublicKey, LAMPORTS_PER_SOL, Keypair } from '@solana/web3.js';
+import { FriendGroup, Event, Prices, BalanceResponse, GroupMember } from '@/types';
 
 const API_BASE = '/api/grpc';
 
@@ -47,10 +41,10 @@ export async function createGroup(
   if (isOnline) {
     try {
       // Generate a random valid-looking base58 string for now
-      // This is necessary because DepositFunds expects a valid Pubkey later
-      const chars = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
-      let randomPubkey = '';
-      for (let i = 0; i < 44; i++) randomPubkey += chars.charAt(Math.floor(Math.random() * chars.length));
+      // Generate a valid Keypair for the group treasury
+      // In a real app, this would be a PDA derived from the program
+      const groupKeypair = Keypair.generate();
+      const groupPubkey = groupKeypair.publicKey.toBase58();
 
       const res = await fetch(API_BASE, {
         method: 'POST',
@@ -60,7 +54,7 @@ export async function createGroup(
           data: {
             name,
             admin_wallet: adminWallet,
-            solana_pubkey: randomPubkey,
+            solana_pubkey: groupPubkey,
             signature,
           },
         }),
@@ -123,10 +117,10 @@ export async function createEvent(
   title: string,
   description: string,
   outcomes: string[],
-  settlementType: 'manual' | 'oracle' | 'consensus',
-  resolveBy: number | null,
+  settlementType: 'manual' | 'oracle' | 'consensus' = 'manual',
+  resolveBy: number | null = null,
   creatorWallet: string,
-  signature: string = 'dev'
+  arbiterWallet?: string
 ): Promise<Event> {
   const isOnline = await checkBackend();
   
@@ -143,9 +137,10 @@ export async function createEvent(
             description,
             outcomes,
             settlement_type: settlementType,
-            resolve_by: resolveBy || 0,
+            resolve_by: resolveBy,
             creator_wallet: creatorWallet,
-            signature,
+            arbiter_wallet: arbiterWallet,
+            signature: 'dev', // Mock signature for now
           },
         }),
       });
@@ -182,6 +177,7 @@ export async function createEvent(
     status: 'active',
     resolveBy: resolveBy || undefined,
     createdAt: Math.floor(Date.now() / 1000),
+    arbiterWallet
   };
 }
 
@@ -564,8 +560,9 @@ export async function getBalance(
 export async function deposit(
   groupSolanaPubkey: string,
   userWallet: string,
-  amountUsdc: number,
-  signature: string = 'dev'
+  amount: number,
+  signature: string = 'dev',
+  type: 'sol' | 'usdc' = 'usdc'
 ): Promise<TransactionResponse> {
   const isOnline = await checkBackend();
   
@@ -579,8 +576,8 @@ export async function deposit(
           data: {
             group_id: groupSolanaPubkey,
             user_wallet: userWallet,
-            amount_sol: 0,
-            amount_usdc: amountUsdc,
+            amount_sol: type === 'sol' ? amount : 0,
+            amount_usdc: type === 'usdc' ? amount : 0,
             user_usdc_account: userWallet, // Placeholder
             signature,
           },

@@ -7,10 +7,14 @@ import {
   getGroups, getEvents, saveEvents, createEvent,
   getEventPrices,
   getBalance, deposit, withdraw, formatUsdc, parseUsdc,
-  deleteEvent,
+  deleteEvent, deleteGroup,
   getGroupMembers, generateInviteLink, isGroupAdmin, addGroupCreatorAsMember
 } from '@/lib/api';
+import { BRAND } from '@/lib/brand';
 import type { FriendGroup, Event, Prices, BalanceResponse, GroupMember } from '@/types';
+import { useConnection, useWallet } from '@solana/wallet-adapter-react';
+import { SystemProgram, Transaction, LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
+import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 
 export default function GroupPage() {
   const router = useRouter();
@@ -39,6 +43,12 @@ export default function GroupPage() {
   const [title, setTitle] = useState('');
   const [outcome1, setOutcome1] = useState('yes');
   const [outcome2, setOutcome2] = useState('no');
+  const [settlementType, setSettlementType] = useState<'manual' | 'oracle' | 'consensus'>('manual');
+  const [arbiterWallet, setArbiterWallet] = useState('');
+
+  // Wallet
+  const { connection } = useConnection();
+  const { publicKey, sendTransaction, connected } = useWallet();
 
   useEffect(() => {
     if (!isInitialized) {
@@ -111,9 +121,10 @@ export default function GroupPage() {
         title,
         '', // description
         outcomes,
-        'manual',
+        settlementType,
         null, // resolveBy
-        user.walletAddress
+        user.walletAddress,
+        arbiterWallet
       );
 
       if (newEvent) {
@@ -150,33 +161,81 @@ export default function GroupPage() {
     }
   };
 
+  const handleDeleteGroup = async () => {
+    if (!group || !user.walletAddress) return;
+
+    if (confirm("⚠️ ARE YOU SURE? ⚠️\n\nThis will permanently delete the group and all its history.\nThis action cannot be undone.")) {
+      try {
+        const success = await deleteGroup(groupId as string, user.walletAddress);
+        if (success) {
+          router.push('/dashboard');
+        } else {
+          alert("Failed to delete group. Please try again.");
+        }
+      } catch (e) {
+        console.error("Delete group error:", e);
+        alert("An error occurred.");
+      }
+    }
+  };
+
   const handleDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user.walletAddress || !transactionAmount) return;
 
     setIsTransacting(true);
     setTransactionError(null);
-
     try {
-      const amountUsdc = parseUsdc(transactionAmount);
-      // Backend requires Solana Pubkey for treasury ops
-      if (!group?.solanaPubkey || group.solanaPubkey.includes('_')) {
-        throw new Error('This group is not on-chain (mock). Please create a new group.');
+      const amount = parseFloat(transactionAmount);
+      if (isNaN(amount) || amount <= 0) throw new Error("Invalid amount");
+
+      let signature = 'dev';
+
+      // Real Wallet Transfer
+      if (connected && publicKey) {
+        try {
+          if (!group?.solanaPubkey || group.solanaPubkey.startsWith('mock_')) {
+            throw new Error("Group wallet not ready for real deposits");
+          }
+
+          const transaction = new Transaction().add(
+            SystemProgram.transfer({
+              fromPubkey: publicKey,
+              toPubkey: new PublicKey(group.solanaPubkey),
+              lamports: amount * LAMPORTS_PER_SOL
+            })
+          );
+
+          const { blockhash } = await connection.getLatestBlockhash();
+          transaction.recentBlockhash = blockhash;
+          transaction.feePayer = publicKey;
+
+          signature = await sendTransaction(transaction, connection);
+          await connection.confirmTransaction(signature, 'processed');
+        } catch (txError) {
+          console.error("Wallet transaction failed:", txError);
+          setTransactionError("Wallet transaction failed. Check console.");
+          setIsTransacting(false);
+          return;
+        }
       }
 
-      const result = await deposit(group.solanaPubkey, user.walletAddress, amountUsdc);
+      const success = await deposit(group!.solanaPubkey!, user.walletAddress, amount, signature, 'sol');
 
-      if (result.success) {
-        setBalance({
-          balanceSol: result.newBalanceSol,
-          balanceUsdc: result.newBalanceUsdc,
-          fundsLocked: balance?.fundsLocked || false,
-        });
+      if (success) {
         setShowDeposit(false);
         setTransactionAmount('');
+        // Refresh balance
+        if (group?.solanaPubkey) {
+          const bal = await getBalance(group.solanaPubkey, user.walletAddress);
+          setBalance(bal);
+        }
+      } else {
+        setTransactionError("Deposit failed backend verification");
       }
-    } catch (err) {
-      setTransactionError(err instanceof Error ? err.message : 'Deposit failed');
+    } catch (e) {
+      console.error(e);
+      setTransactionError(e instanceof Error ? e.message : "Error processing deposit");
     } finally {
       setIsTransacting(false);
     }
@@ -282,16 +341,14 @@ export default function GroupPage() {
 
           {/* Members Section */}
           <section style={{
-            width: '100%',
-            padding: '32px',
-            borderRadius: '16px',
-            background: 'rgba(255, 255, 255, 0.03)',
-            backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            boxSizing: 'border-box'
+            marginBottom: '48px',
+            padding: '24px',
+            borderRadius: '12px',
+            background: '#050505',
+            border: '1px solid #222',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <h2 style={{ fontSize: '20px', fontWeight: '500', color: 'rgba(255, 255, 255, 0.9)', margin: 0 }}>members</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '24px' }}>
+              <h2 style={{ fontSize: '16px', fontWeight: '500', color: '#888', letterSpacing: '0.05em', textTransform: 'lowercase' }}>members</h2>
               <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
                 <button
                   onClick={() => setShowMembers(!showMembers)}
@@ -365,6 +422,30 @@ export default function GroupPage() {
                 )}
               </ul>
             )}
+
+            {/* Danger Zone (Admin Only) */}
+            {isAdmin && group && (
+              <div style={{ marginTop: '64px', borderTop: '1px solid #222', paddingTop: '32px', textAlign: 'center' }}>
+                <button
+                  onClick={handleDeleteGroup}
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid #450a0a',
+                    color: '#ef4444',
+                    padding: '12px 24px',
+                    borderRadius: '8px',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    opacity: 0.7,
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = '#450a0a'; e.currentTarget.style.opacity = '1'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.opacity = '0.7'; }}
+                >
+                  Delete Group
+                </button>
+              </div>
+            )}
           </section>
 
           {/* Balance Section */}
@@ -373,23 +454,22 @@ export default function GroupPage() {
             padding: '32px',
             borderRadius: '16px',
             textAlign: 'center',
-            background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(59, 130, 246, 0.08) 100%)',
-            backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
+            background: '#000',
+            border: '1px solid #222',
             boxSizing: 'border-box'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-              <h2 style={{ fontSize: '20px', fontWeight: '500', color: 'rgba(255, 255, 255, 0.9)', margin: 0 }}>your balance</h2>
+              <h2 style={{ fontSize: '18px', fontWeight: '500', color: '#fff', margin: 0 }}>your balance</h2>
               <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                 <button
                   onClick={() => { setShowDeposit(true); setShowWithdraw(false); setTransactionError(null); }}
-                  className="text-sm px-4 py-2 rounded-full bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 transition-all"
+                  style={{ fontSize: '14px', padding: '8px 16px', borderRadius: '8px', background: '#111', color: '#fff', border: '1px solid #333', cursor: 'pointer' }}
                 >
                   + deposit
                 </button>
                 <button
                   onClick={() => { setShowWithdraw(true); setShowDeposit(false); setTransactionError(null); }}
-                  className="text-sm px-4 py-2 rounded-full bg-white/10 text-white/70 hover:bg-white/20 hover:text-white transition-all"
+                  style={{ fontSize: '14px', padding: '8px 16px', borderRadius: '8px', background: 'transparent', color: '#888', border: 'none', cursor: 'pointer' }}
                 >
                   − withdraw
                 </button>
@@ -441,7 +521,14 @@ export default function GroupPage() {
                 {transactionError && (
                   <p style={{ color: '#ef4444', marginBottom: '16px' }}>{transactionError}</p>
                 )}
-                <div style={{ display: 'flex', gap: '32px' }}>
+                <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+                  <WalletMultiButton style={{ background: '#333', height: '40px', fontSize: '14px' }} />
+                  <button
+                    onClick={() => router.push('/dashboard')}
+                    style={{ padding: '8px 16px', borderRadius: '8px', background: 'rgba(255, 255, 255, 0.1)', color: 'white', border: 'none', cursor: 'pointer' }}
+                  >
+                    back to home
+                  </button>
                   <button
                     type="submit"
                     disabled={!transactionAmount || isTransacting}
@@ -551,62 +638,117 @@ export default function GroupPage() {
               )}
             </div>
 
-            {/* Create Market Form */}
+            {/* Create Market Modal */}
             {showCreate && (
-              <form onSubmit={handleCreateMarket} className="mb-12 pb-12 border-b border-white/20 max-w-md mx-auto text-left">
-                <div className="mb-8">
-                  <label className="block text-lg text-white/60 mb-3">question</label>
-                  <input
-                    type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="will [something] happen?"
-                    className="w-full text-xl py-4 border-b-2 border-white/40 focus:border-white transition-colors bg-transparent text-white placeholder:text-white/50"
-                    autoFocus
-                  />
-                </div>
+              <div style={{
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                width: '100vw',
+                height: '100vh',
+                background: 'rgba(0, 0, 0, 0.6)',
+                backdropFilter: 'blur(12px)',
+                zIndex: 1000,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '20px'
+              }}>
+                <div style={{
+                  background: '#090909',
+                  border: '1px solid #222',
+                  borderRadius: '24px',
+                  padding: '40px',
+                  width: '100%',
+                  maxWidth: '550px',
+                  boxShadow: '0 50px 100px -20px rgba(0,0,0,0.9)'
+                }}>
+                  <h2 style={{ fontSize: '20px', marginBottom: '32px', textAlign: 'center', color: '#fff' }}>New Market</h2>
 
-                <div className="mb-8">
-                  <label className="block text-lg text-white/60 mb-3">outcomes</label>
-                  <div className="flex gap-4 items-end">
-                    <input
-                      type="text"
-                      value={outcome1}
-                      onChange={(e) => setOutcome1(e.target.value)}
-                      placeholder="yes"
-                      className="flex-1 text-lg py-3 border-b-2 border-white/40 focus:border-white transition-colors bg-transparent text-white placeholder:text-white/50"
-                    />
-                    <span className="text-white/50 py-3">vs</span>
-                    <input
-                      type="text"
-                      value={outcome2}
-                      onChange={(e) => setOutcome2(e.target.value)}
-                      placeholder="no"
-                      className="flex-1 text-lg py-3 border-b-2 border-white/40 focus:border-white transition-colors bg-transparent text-white placeholder:text-white/50"
-                    />
-                  </div>
-                </div>
+                  <form onSubmit={handleCreateMarket}>
+                    <div style={{ marginBottom: '24px' }}>
+                      <label style={{ display: 'block', fontSize: '12px', color: '#666', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Question</label>
+                      <input
+                        type="text"
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder="e.g. Will SOL hit $200?"
+                        style={{ width: '100%', padding: '16px', background: '#111', border: '1px solid #333', borderRadius: '8px', color: 'white', fontSize: '16px', outline: 'none' }}
+                        autoFocus
+                      />
+                    </div>
 
-                <div className="flex gap-8">
-                  <button
-                    type="submit"
-                    disabled={!title.trim() || isCreating}
-                    className="text-xl text-white/80 hover:text-white transition-opacity disabled:text-white/40"
-                  >
-                    {isCreating ? 'creating...' : 'create market →'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowCreate(false);
-                      setTitle('');
-                    }}
-                    className="text-xl text-white/50 hover:text-white/80 transition-opacity"
-                  >
-                    cancel
-                  </button>
+                    <div style={{ marginBottom: '24px' }}>
+                      <label style={{ display: 'block', fontSize: '14px', color: '#888', marginBottom: '8px' }}>Outcomes</label>
+                      <div style={{ display: 'flex', gap: '12px' }}>
+                        <input
+                          type="text"
+                          value={outcome1}
+                          onChange={(e) => setOutcome1(e.target.value)}
+                          placeholder="Yes"
+                          style={{ flex: 1, padding: '16px', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px', color: 'white', outline: 'none' }}
+                        />
+                        <input
+                          type="text"
+                          value={outcome2}
+                          onChange={(e) => setOutcome2(e.target.value)}
+                          placeholder="No"
+                          style={{ flex: 1, padding: '16px', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px', color: 'white', outline: 'none' }}
+                        />
+                      </div>
+                    </div>
+
+                    <div style={{ marginBottom: '24px' }}>
+                      <label style={{ display: 'block', fontSize: '14px', color: '#888', marginBottom: '8px' }}>Settlement Mode</label>
+                      <select
+                        value={settlementType}
+                        onChange={(e) => setSettlementType(e.target.value as any)}
+                        style={{ width: '100%', padding: '16px', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px', color: 'white', outline: 'none', appearance: 'none' }}
+                      >
+                        <option value="manual">Manual / Arbiter</option>
+                        <option value="oracle">Oracle (Automated)</option>
+                        <option value="consensus">Group Consensus</option>
+                      </select>
+                    </div>
+
+                    {settlementType === 'manual' && (
+                      <div style={{ marginBottom: '32px' }}>
+                        <label style={{ display: 'block', fontSize: '14px', color: '#888', marginBottom: '8px' }}>Arbiter</label>
+                        <select
+                          value={arbiterWallet}
+                          onChange={(e) => setArbiterWallet(e.target.value)}
+                          style={{ width: '100%', padding: '16px', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: '12px', color: 'white', outline: 'none', appearance: 'none' }}
+                        >
+                          <option value="">Select arbiter (defaults to you)</option>
+                          {members.map(member => (
+                            <option key={member.userId} value={member.walletAddress}>
+                              {member.walletAddress.slice(0, 6)}...{member.walletAddress.slice(-4)}
+                              {member.role === 'admin' ? ' (Admin)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '16px' }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowCreate(false)}
+                        style={{ flex: 1, padding: '16px', borderRadius: '12px', background: 'transparent', border: '1px solid rgba(255, 255, 255, 0.2)', color: 'white', cursor: 'pointer' }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={!title.trim() || isCreating}
+                        style={{ flex: 1, padding: '16px', borderRadius: '12px', background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)', border: 'none', color: 'white', fontWeight: '500', cursor: 'pointer', opacity: (!title.trim() || isCreating) ? 0.5 : 1 }}
+                      >
+                        {isCreating ? 'Creating...' : 'Create Market'}
+                      </button>
+                    </div>
+                  </form>
                 </div>
-              </form>
+              </div>
             )}
 
             {/* Markets List */}
