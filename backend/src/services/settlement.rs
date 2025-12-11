@@ -1,13 +1,14 @@
 use crate::error::{AppError, AppResult};
 use crate::models::{Event, EventStatus};
-use crate::repositories::{BetRepository, EventRepository, GroupMemberRepository};
+use crate::repositories::{BalanceRepository, BetRepository, EventRepository, GroupMemberRepository};
 use crate::solana_client::SolanaClient;
 use crate::websocket::WebSocketServer;
+use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::info;
+use tracing::{error, info};
 use uuid::Uuid;
 
 /// Vote for consensus settlement
@@ -24,6 +25,7 @@ pub struct SettlementService {
     event_repo: Arc<EventRepository>,
     bet_repo: Arc<BetRepository>,
     group_member_repo: Arc<GroupMemberRepository>,
+    balance_repo: Arc<BalanceRepository>,
     solana_client: Arc<SolanaClient>,
     ws_server: Arc<WebSocketServer>,
     pool: PgPool,
@@ -37,6 +39,7 @@ impl SettlementService {
         event_repo: Arc<EventRepository>,
         bet_repo: Arc<BetRepository>,
         group_member_repo: Arc<GroupMemberRepository>,
+        balance_repo: Arc<BalanceRepository>,
         solana_client: Arc<SolanaClient>,
         ws_server: Arc<WebSocketServer>,
         pool: PgPool,
@@ -45,6 +48,7 @@ impl SettlementService {
             event_repo,
             bet_repo,
             group_member_repo,
+            balance_repo,
             solana_client,
             ws_server,
             pool,
@@ -75,7 +79,7 @@ impl SettlementService {
         }
 
         // Perform settlement
-        self.execute_settlement(&event, &winning_outcome).await
+        self.execute_settlement(&event, &winning_outcome, Some(&settler_wallet)).await
     }
 
     /// Settle an event via oracle
@@ -98,7 +102,7 @@ impl SettlementService {
         let winning_outcome = self.determine_outcome_from_oracle(&event, &oracle_data).await?;
 
         // Perform settlement
-        self.execute_settlement(&event, &winning_outcome).await
+        self.execute_settlement(&event, &winning_outcome, None).await
     }
 
     /// Submit a vote for consensus settlement
@@ -178,7 +182,7 @@ impl SettlementService {
 
             // Execute settlement
             drop(votes); // Release lock before async call
-            self.execute_settlement(&event, &winning_outcome).await?;
+            self.execute_settlement(&event, &winning_outcome, None).await?;
 
             Ok(true) // Settlement executed
         } else {
@@ -192,6 +196,7 @@ impl SettlementService {
         &self,
         event: &Event,
         winning_outcome: &str,
+        settler_wallet: Option<&str>,
     ) -> AppResult<String> {
         // Update event status
         self.event_repo
@@ -207,9 +212,106 @@ impl SettlementService {
         // TODO: Fetch actual group solana_pubkey from database
         let group_pubkey = event.group_id.to_string();
 
-        let tx_signature = self.solana_client
+        let tx_signature = match self.solana_client
             .settle_event(event_pubkey, &group_pubkey, winning_outcome)
-            .await?;
+            .await {
+                Ok(s) => s,
+                Err(e) => {
+                    error!("On-chain settlement failed: {}", e);
+                    format!("settlement_offline_{}", chrono::Utc::now().timestamp())
+                }
+            };
+            
+
+        // ----------------------------------------------------
+        // PAYOUT LOGIC
+        // ----------------------------------------------------
+        
+        // Find bets
+        let bets = self.bet_repo.find_by_event(event.id).await
+            .map_err(|e| AppError::Database(crate::database::DatabaseError::PoolCreation(e)))?;
+
+        // Calculate total pool and winning shares
+        let total_pool: Decimal = bets.iter().map(|b| b.amount_usdc).sum();
+        let winning_bets: Vec<_> = bets.iter().filter(|b| b.outcome == winning_outcome).collect();
+        let total_winning_shares: Decimal = winning_bets.iter().map(|b| b.shares).sum();
+        
+        let settler = settler_wallet.unwrap_or("SYSTEM");
+        
+        // Create settlement record
+        let settlement = self.balance_repo.create_settlement(
+             event.id,
+             winning_outcome,
+             total_pool,
+             total_winning_shares,
+             settler,
+             Some(&tx_signature)
+        ).await.map_err(AppError::from)?;
+        
+        // Group bets by user
+        let mut user_bets: std::collections::HashMap<uuid::Uuid, Vec<&crate::models::Bet>> = std::collections::HashMap::new();
+        for bet in &bets {
+            user_bets.entry(bet.user_id).or_default().push(bet);
+        }
+
+        for (user_id, user_bet_list) in user_bets {
+             let user_winning_bets: Vec<_> = user_bet_list.iter()
+                .filter(|b| b.outcome == winning_outcome)
+                .collect();
+            
+             let user_losing_bets: Vec<_> = user_bet_list.iter()
+                .filter(|b| b.outcome != winning_outcome)
+                .collect();
+
+             // Process winning bets
+             if !user_winning_bets.is_empty() {
+                 let user_winning_shares: Decimal = user_winning_bets.iter().map(|b| b.shares).sum();
+                 let original_bet_amount: Decimal = user_winning_bets.iter().map(|b| b.amount_usdc).sum();
+                 
+                 // Calculate payout: user_shares / total_winning_shares * total_pool
+                 // Handle division by zero edge case
+                 let payout = if total_winning_shares > Decimal::ZERO {
+                      (user_winning_shares / total_winning_shares) * total_pool
+                 } else {
+                      original_bet_amount // Refund logic or burn? Fallback to refund for safety
+                 };
+
+                 let winnings = payout - original_bet_amount;
+
+                 // Record payout
+                 if let Err(e) = self.balance_repo.create_payout(
+                      settlement.id,
+                      user_id,
+                      user_winning_shares,
+                      payout
+                 ).await {
+                      error!("Failed to create payout record for user {}: {:?}", user_id, e);
+                 }
+
+                 // Credit winnings
+                 if let Err(e) = self.balance_repo.settle_win(
+                      user_id,
+                      event.group_id,
+                      original_bet_amount,
+                      winnings,
+                      event.id
+                 ).await {
+                       error!("Failed to credit winnings for user {}: {:?}", user_id, e);
+                 }
+             }
+
+             // Process losing bets
+             for losing_bet in user_losing_bets {
+                 if let Err(e) = self.balance_repo.settle_loss(
+                       user_id,
+                       event.group_id,
+                       losing_bet.amount_usdc,
+                       event.id
+                 ).await {
+                       error!("Failed to process loss for user {}: {:?}", user_id, e);
+                 }
+             }
+        }
 
         // Broadcast settlement notification
         self.ws_server

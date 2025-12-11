@@ -56,13 +56,13 @@ impl GroupService {
             .group_repo
             .create(name, admin_wallet, &group_pubkey)
             .await
-            .map_err(AppError::Database)?;
+            .map_err(|e| AppError::Database(e.into()))?;
 
         // Add admin as first member
         self.member_repo
             .add_member(group.id, user.id, MemberRole::Admin)
             .await
-            .map_err(AppError::Database)?;
+            .map_err(|e| AppError::Database(e.into()))?;
 
         info!("Created group {} ({})", group.name, group.id);
         Ok(group)
@@ -86,7 +86,7 @@ impl GroupService {
             .member_repo
             .is_member(group_id, inviter.id)
             .await
-            .map_err(AppError::Database)?
+            .map_err(|e| AppError::Database(e.into()))?
         {
             return Err(AppError::Unauthorized("Only members can invite others".into()));
         }
@@ -99,7 +99,7 @@ impl GroupService {
             .member_repo
             .add_member(group_id, invited_user.id, MemberRole::Member)
             .await
-            .map_err(AppError::Database)?;
+            .map_err(|e| AppError::Database(e.into()))?;
 
         info!("Added member {} to group {}", invited_user.id, group_id);
         Ok((invited_user, member))
@@ -121,7 +121,7 @@ impl GroupService {
             .group_repo
             .find_by_id(group_id)
             .await
-            .map_err(AppError::Database)?
+            .map_err(|e| AppError::Database(e.into()))?
             .ok_or_else(|| AppError::NotFound("Group not found".into()))?;
 
         // Verify admin
@@ -129,10 +129,8 @@ impl GroupService {
             return Err(AppError::Unauthorized("Only group admin can delete".into()));
         }
 
-        // Delete (cascade handled by DB usually, or explicit here if needed)
-        // Check if repo has delete, if not assume soft delete or missing feature
-        // Based on previous code, `friend_group_repo.delete(id)` existed.
-        let success = self.group_repo.delete(group.id).await.map_err(AppError::Database)?;
+        // Delete matches
+        let success = self.group_repo.delete(group.id).await.map_err(|e| AppError::Database(e.into()))?;
         
         info!("Deleted group {}", group_id);
         Ok(success)

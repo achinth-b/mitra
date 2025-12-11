@@ -124,9 +124,7 @@ async fn main() -> AppResult<()> {
     let ws_server = Arc::new(WebSocketServer::new());
     info!("✓ WebSocket server initialized");
 
-    // Initialize gRPC service
-    let grpc_service = MitraGrpcService::new(app_state.clone(), state_manager.clone());
-    info!("✓ gRPC service initialized");
+
 
     // =========================================================================
     // BACKGROUND TASKS
@@ -165,10 +163,11 @@ async fn main() -> AppResult<()> {
     info!("✓ ML poller background task started (polling {})", ml_service_url);
 
     // Initialize settlement service
-    let _settlement_service = Arc::new(SettlementService::new(
+    let settlement_service = Arc::new(SettlementService::new(
         app_state.event_repo.clone(),
         app_state.bet_repo.clone(),
         app_state.group_member_repo.clone(),
+        app_state.balance_repo.clone(),
         solana_client.clone(),
         ws_server.clone(),
         pool.clone(),
@@ -218,6 +217,14 @@ async fn main() -> AppResult<()> {
         .build()
         .map_err(|e| AppError::Message(format!("Failed to create reflection service: {}", e)))?;
     
+    // Initialize gRPC service with all dependencies
+    let grpc_service = MitraGrpcService::new(
+        app_state.clone(), 
+        state_manager.clone(),
+        settlement_service.clone()
+    );
+    info!("✓ gRPC service initialized");
+
     let grpc_server = Server::builder()
         .add_service(reflection_service)
         .add_service(grpc_service.into_server())
