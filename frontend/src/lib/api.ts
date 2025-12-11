@@ -11,7 +11,7 @@
  */
 
 import { Connection, PublicKey, LAMPORTS_PER_SOL, Keypair } from '@solana/web3.js';
-import { FriendGroup, Event, Prices, BalanceResponse, GroupMember } from '@/types';
+import { FriendGroup, Event, Prices, BalanceResponse, GroupMember, Bet, BetResponse, TransactionResponse } from '@/types';
 
 const API_BASE = '/api/grpc';
 
@@ -441,6 +441,63 @@ export async function settleEvent(
   };
 }
 
+export async function deleteGroup(
+  groupId: string,
+  deleterWallet: string,
+  signature: string = 'dev'
+): Promise<boolean> {
+  const isOnline = await checkBackend();
+
+  if (isOnline && !groupId.startsWith('grp_')) {
+    try {
+      const res = await fetch(API_BASE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: 'DeleteGroup',
+          data: {
+            group_id: groupId,
+            admin_wallet: deleterWallet,
+            signature,
+          },
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+           // Clean up local storage
+           const groups = await getGroups(deleterWallet);
+           const filtered = groups.filter(g => g.groupId !== groupId);
+           saveGroups(filtered);
+           // Clean up events for this group
+           localStorage.removeItem(`mitra_events_${groupId}`);
+           // Clean up members for this group
+           const allMembers = JSON.parse(localStorage.getItem('mitra_members') || '[]');
+           const filteredMembers = allMembers.filter((m: GroupMember) => m.groupId !== groupId);
+           localStorage.setItem('mitra_members', JSON.stringify(filteredMembers));
+           return true; 
+        }
+      }
+    } catch (e) {
+      console.error('Backend error:', e);
+    }
+  }
+
+  // Local/Mock delete logic
+  console.log("Mock deleting group:", groupId);
+  const groups = await getGroups(deleterWallet);
+  const filtered = groups.filter(g => g.groupId !== groupId);
+  saveGroups(filtered);
+  // Clean up events for this group
+  localStorage.removeItem(`mitra_events_${groupId}`);
+  // Clean up members for this group
+  const allMembers = JSON.parse(localStorage.getItem('mitra_members') || '[]');
+  const filteredMembers = allMembers.filter((m: GroupMember) => m.groupId !== groupId);
+  localStorage.setItem('mitra_members', JSON.stringify(filteredMembers));
+  return true;
+}
+
 export async function deleteEvent(
   eventId: string,
   deleterWallet: string,
@@ -514,8 +571,6 @@ function updateEventStatus(eventId: string, status: string, winningOutcome?: str
 // ===========================================
 // Balance / Treasury Operations
 // ===========================================
-
-import type { BalanceResponse, TransactionResponse } from '@/types';
 
 export async function getBalance(
   groupSolanaPubkey: string,

@@ -758,9 +758,58 @@ impl MitraService for MitraGrpcService {
 
         Ok(Response::new(DeleteEventResponse {
             success,
-            event_id: event_id.to_string(),
+            message: if success { "Event deleted".to_string() } else { "Failed to delete".to_string() },
         }))
     }
+
+    /// Delete a friend group
+    async fn delete_group(
+        &self,
+        request: Request<DeleteGroupRequest>,
+    ) -> Result<Response<DeleteGroupResponse>, Status> {
+        let req = request.into_inner();
+        let group_pubkey = &req.group_id; 
+        
+        info!("DeleteGroup request: group={}", group_pubkey);
+
+        // Verify signature
+        auth::verify_auth_with_timestamp(
+            &req.admin_wallet,
+            "delete_group",
+            chrono::Utc::now().timestamp(),
+            &req.signature,
+        )
+        .map_err(Self::to_status)?;
+
+        // Find group
+        let group = self
+            .app_state
+            .friend_group_repo
+            .find_by_solana_pubkey(group_pubkey)
+            .await
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?
+            .ok_or_else(|| Status::not_found("Group not found"))?;
+
+        // Verify admin
+        if group.admin_wallet != req.admin_wallet {
+            return Err(Status::permission_denied("Only the group admin can delete the group"));
+        }
+
+        // Delete group
+        let deleted = self
+            .app_state
+            .friend_group_repo
+            .delete(group.id)
+            .await
+            .map_err(|e| Status::internal(format!("Database error: {}", e)))?;
+
+        Ok(Response::new(DeleteGroupResponse {
+            success: deleted,
+            message: if deleted { "Group deleted".to_string() } else { "Failed to delete group".to_string() },
+        }))
+    }
+
+
 
     // ========================================================================
     // Treasury / Funds Management
