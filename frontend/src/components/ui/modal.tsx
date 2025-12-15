@@ -19,12 +19,12 @@ export function Modal({ isOpen, onClose, title, children, className }: ModalProp
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
-    
+
     if (isOpen) {
       document.addEventListener('keydown', handleEscape);
       document.body.style.overflow = 'hidden';
     }
-    
+
     return () => {
       document.removeEventListener('keydown', handleEscape);
       document.body.style.overflow = 'unset';
@@ -43,7 +43,7 @@ export function Modal({ isOpen, onClose, title, children, className }: ModalProp
             onClick={onClose}
             className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40"
           />
-          
+
           {/* Modal */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -55,9 +55,9 @@ export function Modal({ isOpen, onClose, title, children, className }: ModalProp
             <div
               className={cn(
                 'w-full max-w-lg rounded-2xl',
-                'bg-gradient-to-br from-slate-800 to-slate-900',
-                'border border-slate-700/50',
-                'shadow-2xl shadow-black/40',
+                'bg-black/80 backdrop-blur-xl',
+                'border border-white/10',
+                'shadow-[0_0_50px_rgba(0,0,0,0.8)]',
                 className
               )}
             >
@@ -73,7 +73,7 @@ export function Modal({ isOpen, onClose, title, children, className }: ModalProp
                   </button>
                 </div>
               )}
-              
+
               {/* Content */}
               <div className="px-6 py-4">
                 {children}

@@ -3,14 +3,13 @@
 //! This module implements the MitraService gRPC handlers using tonic.
 //! The proto definitions are compiled at build time via build.rs.
 
-use crate::error::{AppError, AppResult};
+use crate::error::AppError;
 use crate::state_manager::StateManager;
 use rust_decimal::Decimal;
 use rust_decimal::prelude::ToPrimitive;
-use std::collections::HashMap;
 use std::sync::Arc;
 use tonic::{Request, Response, Status};
-use tracing::{error, info};
+use tracing::error;
 use uuid::Uuid;
 
 // Include the generated proto code
@@ -32,13 +31,16 @@ use proto::{
     DepositRequest, DepositResponse, WithdrawRequest, WithdrawResponse,
     BalanceRequest, BalanceResponse, ClaimRequest, ClaimResponse,
     GetGroupEventsRequest, EventListResponse,
+    FaucetRequest, FaucetResponse,
 };
 
 use crate::services::{GroupService, EventService, BettingService, SettlementService};
 
 /// gRPC service implementation
 pub struct MitraGrpcService {
+    #[allow(dead_code)]
     app_state: Arc<crate::AppState>,
+    #[allow(dead_code)]
     state_manager: Arc<StateManager>,
     group_service: Arc<GroupService>,
     event_service: Arc<EventService>,
@@ -56,6 +58,7 @@ impl MitraGrpcService {
             app_state.friend_group_repo.clone(),
             app_state.user_repo.clone(),
             app_state.group_member_repo.clone(),
+            app_state.solana_client.clone(),
         ));
 
         let event_service = Arc::new(EventService::new(
@@ -507,6 +510,27 @@ impl MitraService for MitraGrpcService {
             amount_claimed: req.amount,
         }))
     }
+
+    /// Request faucet funds
+    async fn request_faucet(
+        &self,
+        request: Request<FaucetRequest>,
+    ) -> Result<Response<FaucetResponse>, Status> {
+        let req = request.into_inner();
+        // Default 1000 USDC (6 decimals)
+        let amount = if req.amount_usdc > 0 { req.amount_usdc } else { 1_000_000_000 };
+
+        let tx_sig = self.app_state.solana_client
+            .mint_test_tokens(&req.wallet_address, amount)
+            .await
+            .map_err(Self::to_status)?;
+
+        Ok(Response::new(FaucetResponse {
+            success: true,
+            solana_tx_signature: tx_sig,
+            message: "Funds minted successfully".to_string(),
+        }))
+    }
 }
 
 // Legacy compatibility: Keep the old MitraBusinessService struct for business logic
@@ -514,7 +538,9 @@ impl MitraService for MitraGrpcService {
 
 /// Business logic service (non-gRPC interface)
 pub struct MitraBusinessService {
+    #[allow(dead_code)]
     app_state: Arc<crate::AppState>,
+    #[allow(dead_code)]
     state_manager: Arc<StateManager>,
 }
 

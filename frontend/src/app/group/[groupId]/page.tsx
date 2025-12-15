@@ -6,7 +6,7 @@ import { useAuthStore } from '@/store/auth';
 import {
   getGroups, getEvents, saveEvents, createEvent,
   getEventPrices,
-  getBalance, deposit, withdraw, formatUsdc, parseUsdc,
+  getBalance, deposit, withdraw, requestFaucet, formatUsdc, parseUsdc,
   deleteEvent, deleteGroup,
   getGroupMembers, generateInviteLink, isGroupAdmin, addGroupCreatorAsMember
 } from '@/lib/api';
@@ -178,6 +178,31 @@ export default function GroupPage() {
       }
     }
   };
+
+  async function handleFaucet() {
+    if (!user || !user.walletAddress || !group) return;
+
+    setIsTransacting(true);
+    setTransactionError(null);
+    try {
+      const sig = await requestFaucet(user.walletAddress);
+      console.log('Faucet success:', sig);
+
+      // Wait for confirmation then refresh balance
+      setTimeout(async () => {
+        if (user.walletAddress && group) { // Re-check existence
+          const bal = await getBalance(group.solanaPubkey!, user.walletAddress); // Changed group.id to group.solanaPubkey!
+          setBalance(bal);
+        }
+        setIsTransacting(false);
+        alert('Received 1000 Test USDC!');
+      }, 2000);
+    } catch (e: any) {
+      console.error(e);
+      setTransactionError(e.message || 'Faucet failed');
+      setIsTransacting(false);
+    }
+  }
 
   const handleDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -494,8 +519,17 @@ export default function GroupPage() {
                   onSubmit={showDeposit ? handleDeposit : handleWithdraw}
                   className="max-w-md mx-auto p-8 rounded-2xl border border-white/10 bg-black/50 backdrop-blur-xl"
                 >
-                  <h3 className="text-lg text-white mb-6 font-light">
-                    {showDeposit ? 'Deposit Funds' : 'Withdraw Funds'}
+                  <h3 className="text-lg text-white mb-6 font-light flex justify-between items-center">
+                    <span>{showDeposit ? 'Deposit Funds' : 'Withdraw Funds'}</span>
+                    {showDeposit && (
+                      <button
+                        type="button"
+                        onClick={handleFaucet}
+                        className="text-xs px-3 py-1 bg-blue-600/20 text-blue-400 hover:bg-blue-600/30 rounded-full transition-colors"
+                      >
+                        + Get Test USDC
+                      </button>
+                    )}
                   </h3>
 
                   <div className="relative mb-8">

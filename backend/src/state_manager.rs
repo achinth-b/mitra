@@ -120,7 +120,7 @@ impl StateManager {
         // Build tree level by level
         let mut current_level = leaves;
         let mut proofs: HashMap<Uuid, MerkleProof> = HashMap::new();
-        let mut level = 0;
+        let mut _level = 0;
 
         while current_level.len() > 1 {
             let mut next_level = Vec::new();
@@ -164,7 +164,7 @@ impl StateManager {
             }
 
             current_level = next_level;
-            level += 1;
+            _level += 1;
         }
 
         let root_hash = current_level[0].1.clone();

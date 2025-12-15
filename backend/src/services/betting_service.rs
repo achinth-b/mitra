@@ -1,7 +1,7 @@
 use crate::amm::LmsrAmm;
 use crate::auth;
 use crate::error::{AppError, AppResult};
-use crate::models::{Bet, Payout, Transaction, TransactionType, UserGroupBalance};
+use crate::models::{Bet, Transaction, TransactionType, UserGroupBalance};
 use crate::repositories::{BalanceRepository, BetRepository, EventRepository, UserRepository};
 use crate::services::event_service::EventPrices;
 use crate::solana_client::SolanaClient;
@@ -10,7 +10,7 @@ use rust_decimal::Decimal;
 use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 use std::sync::Arc;
-use tracing::{info, error};
+use tracing::info;
 use uuid::Uuid;
 
 /// Service for managing bets

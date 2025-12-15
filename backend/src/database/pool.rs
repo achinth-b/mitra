@@ -71,7 +71,7 @@ pub async fn create_pool(config: &DatabaseConfig) -> Result<PgPool, DatabaseErro
 
 /// Create a PostgreSQL connection pool from a URL string (legacy method)
 /// Prefer using `create_pool` with `DatabaseConfig` instead
-pub async fn create_pool_from_url(database_url: &str) -> Result<PgPool, DatabaseError> {
+pub async fn create_pool_from_url(_database_url: &str) -> Result<PgPool, DatabaseError> {
     let config = DatabaseConfig::from_env()
         .map_err(|e| DatabaseError::Config(e))?;
     create_pool(&config).await

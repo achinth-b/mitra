@@ -12,6 +12,7 @@ pub struct Committer {
     state_manager: Arc<StateManager>,
     event_repo: Arc<EventRepository>,
     solana_client: Arc<SolanaClient>,
+    #[allow(dead_code)]
     pool: PgPool,
     commit_interval: Duration,
     min_volume_threshold: u64, // Minimum volume (in USDC cents) to trigger commit

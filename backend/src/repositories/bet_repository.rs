@@ -180,9 +180,9 @@ impl BetRepository {
     #[allow(dead_code)]
     pub async fn mark_committed(
         &self,
-        id: Uuid,
-        committed_slot: i64,
-        merkle_proof: &serde_json::Value,
+        _id: Uuid,
+        _committed_slot: i64,
+        _merkle_proof: &serde_json::Value,
     ) -> SqlxResult<Bet> {
         // This will be uncommented and implemented in Phase 7
         // sqlx::query_as!(

@@ -15,6 +15,8 @@ use sha2::{Sha256, Digest};
 use std::str::FromStr;
 use std::sync::Arc;
 use tracing::{info, warn, debug};
+use spl_associated_token_account;
+use spl_token;
 
 /// Configuration for Solana client
 #[derive(Clone, Debug)]
@@ -24,6 +26,7 @@ pub struct SolanaConfig {
     pub events_program_id: String,
     pub friend_groups_program_id: String,
     pub treasury_program_id: String,
+    pub usdc_mint: String,
     pub commitment: CommitmentConfig,
 }
 
@@ -35,6 +38,7 @@ impl Default for SolanaConfig {
             events_program_id: "GHzeKGDCAsPzt2BMkXrS8y8azC4jDYec2SNuwd4tmZ9F".to_string(),
             friend_groups_program_id: "A4hEysUGCcMWtuiWMCUZr8nw6mL8WDkTsKXjifTttCQJ".to_string(),
             treasury_program_id: "38uX65g1HHMyoJ7WdtqqjrTrJEjD23WxZnLai6NUnUNB".to_string(),
+            usdc_mint: "42ASHzH26iCwtVDhNKHBwWfzn2wt6ikVrXwR8CS3HmjP".to_string(),
             commitment: CommitmentConfig::confirmed(),
         }
     }
@@ -57,12 +61,16 @@ impl SolanaConfig {
         let treasury_program_id = std::env::var("TREASURY_PROGRAM_ID")
             .unwrap_or_else(|_| "38uX65g1HHMyoJ7WdtqqjrTrJEjD23WxZnLai6NUnUNB".to_string());
 
+        let usdc_mint = std::env::var("USDC_MINT")
+            .unwrap_or_else(|_| "42ASHzH26iCwtVDhNKHBwWfzn2wt6ikVrXwR8CS3HmjP".to_string());
+
         Self {
             rpc_url,
             ws_url,
             events_program_id,
             friend_groups_program_id,
             treasury_program_id,
+            usdc_mint,
             commitment: CommitmentConfig::confirmed(),
         }
     }
@@ -119,7 +127,7 @@ impl SolanaClient {
         let keypair: Vec<u8> = serde_json::from_slice(&keypair_bytes)
             .map_err(|e| AppError::Config(format!("Failed to parse keypair: {}", e)))?;
         
-        let keypair = Keypair::from_bytes(&keypair)
+        let keypair = Keypair::from_bytes(keypair.as_slice())
             .map_err(|e| AppError::Config(format!("Invalid keypair: {}", e)))?;
         
         self.keypair = Some(Arc::new(keypair));
@@ -137,14 +145,14 @@ impl SolanaClient {
         let keypair = if keypair_str.starts_with('[') {
             let keypair_bytes: Vec<u8> = serde_json::from_str(&keypair_str)
                 .map_err(|e| AppError::Config(format!("Failed to parse keypair JSON: {}", e)))?;
-            Keypair::from_bytes(&keypair_bytes)
+            Keypair::from_bytes(keypair_bytes.as_slice())
                 .map_err(|e| AppError::Config(format!("Invalid keypair bytes: {}", e)))?
         } else {
             // Try base58
             let keypair_bytes = bs58::decode(&keypair_str)
                 .into_vec()
                 .map_err(|e| AppError::Config(format!("Failed to decode base58 keypair: {}", e)))?;
-            Keypair::from_bytes(&keypair_bytes)
+            Keypair::from_bytes(keypair_bytes.as_slice())
                 .map_err(|e| AppError::Config(format!("Invalid keypair: {}", e)))?
         };
         
@@ -180,6 +188,12 @@ impl SolanaClient {
     pub fn treasury_program_id(&self) -> AppResult<Pubkey> {
         Pubkey::from_str(&self.config.treasury_program_id)
             .map_err(|e| AppError::Validation(format!("Invalid treasury program ID: {}", e)))
+    }
+
+    /// Get USDC mint
+    pub fn usdc_mint(&self) -> AppResult<Pubkey> {
+        Pubkey::from_str(&self.config.usdc_mint)
+            .map_err(|e| AppError::Validation(format!("Invalid USDC mint: {}", e)))
     }
 
     // ========================================================================
@@ -627,8 +641,109 @@ impl SolanaClient {
     }
 
     // ========================================================================
-    // deposit_to_treasury - Deposits funds into group treasury
+    // create_friend_group - Creates a new friend group on-chain
     // ========================================================================
+
+    /// Create a new friend group on-chain
+    ///
+    /// Initializes the friend group PDA and treasury accounts.
+    ///
+    /// # Arguments
+    /// * `name` - Group name
+    /// * `admin_wallet` - Admin wallet pubkey
+    ///
+    /// # Returns
+    /// (Transaction signature, Group Pubkey)
+    pub async fn create_friend_group(
+        &self,
+        name: &str,
+        admin_wallet: &str,
+    ) -> AppResult<(String, String)> {
+        let admin_pubkey = Pubkey::from_str(admin_wallet)
+            .map_err(|e| AppError::Validation(format!("Invalid admin wallet: {}", e)))?;
+        
+        let groups_program_id = self.friend_groups_program_id()?;
+        
+        // Derive Group PDA
+        let (group_pda, _) = self.derive_friend_group_pda(&admin_pubkey)?;
+        
+        // Check if exists
+        if let Ok(true) = self.account_exists(&group_pda).await {
+             // If simulated, might always return false, so this check is good for real env
+             info!("Group already exists on-chain: {}", group_pda);
+             // In a real scenario we might want to fail or return existing. 
+             // For now, proceed to attempt creation or return keys.
+        }
+
+        // Check keypair
+        if self.keypair.is_none() {
+            warn!("No keypair configured - simulating group creation");
+            return Ok((
+                format!("sim_create_group_{}", chrono::Utc::now().timestamp()),
+                group_pda.to_string()
+            ));
+        }
+
+        let usdc_mint = self.usdc_mint()?;
+
+        // Derive Treasury PDAs (SOL and USDC)
+        let (treasury_sol_pda, _) = Pubkey::find_program_address(
+            &[b"treasury_sol", group_pda.as_ref()],
+            &groups_program_id,
+        );
+
+        // For USDC treasury (token account), it's usually an ATA owned by the Group PDA
+        // The program usually initializes this ATA.
+        // Or if it's a PDA based token account:
+        let (treasury_usdc_pda, _) = Pubkey::find_program_address(
+            &[b"treasury_usdc", group_pda.as_ref()],
+            &groups_program_id,
+        );
+        // Note: Logic depends on program. If program uses ATA, we calculate ATA.
+        // Assuming program uses PDA seeds for token account based on `deposit_to_treasury` not calculating ATA.
+
+        info!("Creating group '{}' for admin {} (PDA: {})", name, admin_wallet, group_pda);
+
+        // Build instruction data: discriminator (8) + name string
+        let discriminator = Self::instruction_discriminator("create_group");
+        let name_bytes = name.as_bytes();
+        let mut instruction_data = Vec::with_capacity(8 + 4 + name_bytes.len());
+        instruction_data.extend_from_slice(&discriminator);
+        instruction_data.extend_from_slice(&(name_bytes.len() as u32).to_le_bytes());
+        instruction_data.extend_from_slice(name_bytes);
+
+        let system_program = Pubkey::from_str("11111111111111111111111111111111")
+            .map_err(|_| AppError::Config("Invalid system program ID".to_string()))?;
+        let token_program = Pubkey::from_str("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA")
+            .map_err(|_| AppError::Config("Invalid token program ID".to_string()))?;
+        let rent = Pubkey::from_str("SysvarRent111111111111111111111111111111111")
+            .map_err(|_| AppError::Config("Invalid rent sysvar ID".to_string()))?;
+
+        // Accounts: group, admin, usdc_mint, treasury_sol, treasury_usdc, payer (signer), system, token, rent
+        let payer = self.keypair.as_ref().unwrap().pubkey();
+
+        let instruction = Instruction {
+            program_id: groups_program_id,
+            accounts: vec![
+                AccountMeta::new(group_pda, false),              // group
+                AccountMeta::new_readonly(admin_pubkey, false),  // admin (not signing, payer signs)
+                AccountMeta::new_readonly(usdc_mint, false),     // usdc_mint
+                AccountMeta::new(treasury_sol_pda, false),       // treasury_sol
+                AccountMeta::new(treasury_usdc_pda, false),      // treasury_usdc
+                AccountMeta::new(payer, true),                   // payer (signer)
+                AccountMeta::new_readonly(system_program, false),// system_program
+                AccountMeta::new_readonly(token_program, false), // token_program
+                AccountMeta::new_readonly(rent, false),          // rent
+            ],
+            data: instruction_data,
+        };
+
+        let signature = self.send_transaction(instruction).await?;
+        
+        info!("Group created successfully on-chain: {}", signature);
+        Ok((signature.to_string(), group_pda.to_string()))
+    }
+
 
     /// Deposit funds (SOL and/or USDC) to a friend group treasury
     ///
@@ -1042,6 +1157,78 @@ impl SolanaClient {
             Ok(None) => Ok(false),
             Err(e) => Err(AppError::ExternalService(format!("Failed to verify transaction: {}", e))),
         }
+    }
+
+    // ========================================================================
+    // Faucet
+    // ========================================================================
+
+    /// Mint test tokens to a user wallet (Faucet)
+    pub async fn mint_test_tokens(
+        &self,
+        to_wallet: &str,
+        amount: u64
+    ) -> AppResult<String> {
+        let to_pubkey = Pubkey::from_str(to_wallet)
+            .map_err(|e| AppError::Validation(format!("Invalid wallet: {}", e)))?;
+            
+        // Check keypair (Mint Authority)
+        if self.keypair.is_none() {
+            warn!("No keypair configured - simulating faucet mint");
+            return Ok(format!("sim_mint_{}_{}", to_wallet, chrono::Utc::now().timestamp()));
+        }
+        let payer = self.keypair.as_ref().unwrap();
+
+        let usdc_mint = self.usdc_mint()?;
+
+        // Get ATA
+        let ata = spl_associated_token_account::get_associated_token_address(
+            &to_pubkey,
+            &usdc_mint,
+        );
+
+        let mut instructions = vec![];
+
+        // 1. Create ATA if needed (idempotent)
+        instructions.push(
+            spl_associated_token_account::instruction::create_associated_token_account_idempotent(
+                &payer.pubkey(),
+                &to_pubkey,
+                &usdc_mint,
+                &spl_token::ID,
+            )
+        );
+
+        // 2. Mint tokens
+        instructions.push(
+            spl_token::instruction::mint_to(
+                &spl_token::ID,
+                &usdc_mint,
+                &ata,
+                &payer.pubkey(),
+                &[], // multi-signers
+                amount,
+            ).map_err(|e| AppError::ExternalService(format!("Failed to build mint instruction: {}", e)))?
+        );
+
+        // Send transaction
+        let recent_blockhash = self.rpc_client
+            .get_latest_blockhash()
+            .map_err(|e| AppError::ExternalService(format!("Failed to get blockhash: {}", e)))?;
+
+        let transaction = Transaction::new_signed_with_payer(
+            &instructions,
+            Some(&payer.pubkey()),
+            &[payer.as_ref()], // payer signs as Payer AND Mint Authority
+            recent_blockhash,
+        );
+
+        let signature = self.rpc_client
+            .send_and_confirm_transaction(&transaction)
+            .map_err(|e| AppError::ExternalService(format!("Faucet transaction failed: {}", e)))?;
+
+        info!("Faucet mint successful: {}", signature);
+        Ok(signature.to_string())
     }
 }
 

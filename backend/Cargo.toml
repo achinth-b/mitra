@@ -19,7 +19,8 @@ path = "src/main.rs"
 tokio = { version = "1", features = ["full"] }
 
 # Database
-sqlx = { version = "0.7.4", features = ["runtime-tokio-native-tls", "postgres", "chrono", "uuid", "migrate", "rust_decimal"] }
+# Downgrading to 0.6.3 to resolve zeroize conflict with Solana
+sqlx = { version = "0.6.3", features = ["runtime-tokio-native-tls", "postgres", "chrono", "uuid", "migrate", "decimal", "macros", "json"] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
@@ -55,11 +56,11 @@ uuid = { version = "1", features = ["v4", "serde"] }
 rust_decimal = { version = "1", features = ["serde-with-str", "std"] }
 
 # Solana client (for on-chain interactions)
-# Using Solana 2.x to match Anchor 0.32.x
-solana-client = "2.0"
-solana-sdk = "2.0"
-anchor-client = "0.32.0"
-anchor-lang = "0.32.0"
+# Using Solana 1.18 and Anchor 0.30.1 for stability
+solana-client = "1.18.17"
+solana-sdk = "1.18.17"
+anchor-client = "0.30.1"
+anchor-lang = "0.30.1"
 
 # Base58 encoding (for keypair handling)
 bs58 = "0.5"
@@ -81,6 +82,9 @@ tokio-tungstenite = "0.21"
 sha2 = "0.10"
 hex = "0.4"
 # Note: ed25519-dalek is provided by solana-sdk
+spl-token = "4.0"
+spl-associated-token-account = "2.3"
+# spl-memo = "=4.0.0" # Removing manual pin, letting cargo resolve
 
 [build-dependencies]
 # gRPC code generation

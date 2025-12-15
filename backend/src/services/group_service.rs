@@ -5,7 +5,8 @@ use crate::repositories::{FriendGroupRepository, GroupMemberRepository, UserRepo
 use anchor_client::solana_sdk::signature::Keypair;
 use anchor_client::solana_sdk::signer::Signer;
 use std::sync::Arc;
-use tracing::info;
+use tracing::{info, warn};
+use crate::solana_client::SolanaClient;
 use uuid::Uuid;
 
 /// Service for managing friend groups
@@ -13,6 +14,7 @@ pub struct GroupService {
     group_repo: Arc<FriendGroupRepository>,
     user_repo: Arc<UserRepository>,
     member_repo: Arc<GroupMemberRepository>,
+    solana_client: Arc<SolanaClient>,
 }
 
 impl GroupService {
@@ -20,11 +22,13 @@ impl GroupService {
         group_repo: Arc<FriendGroupRepository>,
         user_repo: Arc<UserRepository>,
         member_repo: Arc<GroupMemberRepository>,
+        solana_client: Arc<SolanaClient>,
     ) -> Self {
         Self {
             group_repo,
             user_repo,
             member_repo,
+            solana_client,
         }
     }
 
@@ -46,9 +50,30 @@ impl GroupService {
         let user = self.user_repo.find_or_create_by_wallet(admin_wallet).await?;
 
         // Generate pubkey if missing (mock/dev mode fallback)
+        // Generate pubkey if missing (mock/dev mode fallback)
         let group_pubkey = match solana_pubkey {
             Some(pk) => pk.to_string(),
-            None => Keypair::new().pubkey().to_string(),
+            None => {
+                // Determine if we should create on-chain
+                if self.solana_client.has_keypair() {
+                    info!("Attempting to create group on-chain...");
+                    match self.solana_client.create_friend_group(name, admin_wallet).await {
+                        Ok((sig, pubkey)) => {
+                            info!("On-chain group creation successful: {}", sig);
+                            pubkey
+                        },
+                        Err(e) => {
+                            warn!("Failed to create group on-chain: {}. Falling back to off-chain keypair.", e);
+                            // Fallback (for offline dev or errors)
+                            // Ideally we should fail here if strict consistency is needed
+                            Keypair::new().pubkey().to_string()
+                        }
+                    }
+                } else {
+                    info!("No backend keypair, skipping on-chain creation");
+                    Keypair::new().pubkey().to_string()
+                }
+            },
         };
 
         // Create group

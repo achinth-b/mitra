@@ -12,7 +12,7 @@ interface CardProps {
 
 export function Card({ children, className, hover = false, onClick }: CardProps) {
   const Component = hover ? motion.div : 'div';
-  
+
   return (
     <Component
       {...(hover && {
@@ -21,9 +21,9 @@ export function Card({ children, className, hover = false, onClick }: CardProps)
       })}
       onClick={onClick}
       className={cn(
-        'rounded-2xl bg-gradient-to-br from-slate-800/80 to-slate-900/80',
-        'border border-slate-700/50 backdrop-blur-sm',
-        'shadow-xl shadow-black/20',
+        'rounded-3xl bg-black/40 backdrop-blur-md',
+        'border border-white/10',
+        'shadow-[0_8px_32px_rgba(0,0,0,0.5)]',
         hover && 'cursor-pointer',
         className
       )}

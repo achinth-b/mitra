@@ -815,3 +815,47 @@ export function isGroupAdmin(groupId: string, walletAddress: string): boolean {
   const member = members.find(m => m.walletAddress === walletAddress);
   return member?.role === 'admin';
 }
+// ===========================================
+// Faucet
+// ===========================================
+
+export async function requestFaucet(
+  walletAddress: string,
+  amountUsdc: number = 1_000_000_000 // 1000 USDC default
+): Promise<string> {
+  const isOnline = await checkBackend();
+  
+  if (isOnline) {
+    try {
+      const res = await fetch(API_BASE, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          method: 'RequestFaucet',
+          data: {
+            wallet_address: walletAddress,
+            amount_usdc: amountUsdc,
+          },
+        }),
+      });
+      
+      const data = await res.json();
+      
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      
+      return data.solanaTxSignature;
+    } catch (e) {
+      console.error('Faucet request failed:', e);
+      // Simulate if backend fails/offline for dev UX
+      return `sim_faucet_${Date.now()}`;
+    }
+  } else {
+    // Offline simulation
+    console.warn('Backend offline, simulating faucet');
+    return `sim_faucet_${Date.now()}`;
+  }
+}

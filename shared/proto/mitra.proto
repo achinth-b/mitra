@@ -23,6 +23,9 @@ service MitraService {
   rpc WithdrawFunds(WithdrawRequest) returns (WithdrawResponse);
   rpc GetUserBalance(BalanceRequest) returns (BalanceResponse);
   rpc ClaimWinnings(ClaimRequest) returns (ClaimResponse);
+  
+  // Devnet Tools
+  rpc RequestFaucet(FaucetRequest) returns (FaucetResponse);
 }
 
 // ============================================================================
@@ -222,4 +225,15 @@ message ClaimResponse {
   bool success = 1;
   string solana_tx_signature = 2;
   uint64 amount_claimed = 3;
+}
+
+message FaucetRequest {
+  string wallet_address = 1;
+  uint64 amount_usdc = 2; // Optional, default to fixed amount
+}
+
+message FaucetResponse {
+  bool success = 1;
+  string solana_tx_signature = 2;
+  string message = 3;
 }

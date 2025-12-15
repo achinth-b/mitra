@@ -345,7 +345,7 @@ impl SettlementService {
     async fn determine_outcome_from_oracle(
         &self,
         event: &Event,
-        oracle_data: &HashMap<String, String>,
+        _oracle_data: &HashMap<String, String>,
     ) -> AppResult<String> {
         // TODO: Implement oracle-specific logic
         // For now, return first outcome as placeholder

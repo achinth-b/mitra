@@ -1,7 +1,7 @@
 use crate::amm::LmsrAmm;
 use crate::auth;
 use crate::error::{AppError, AppResult};
-use crate::models::{Event, EventStatus};
+use crate::models::Event;
 use crate::repositories::{BetRepository, EventRepository, GroupMemberRepository, UserRepository};
 use crate::services::SettlementService;
 use anchor_client::solana_sdk::signature::Keypair;

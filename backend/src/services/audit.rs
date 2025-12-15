@@ -22,6 +22,7 @@ pub struct AuditLogEntry {
 
 /// Audit trail service for logging all important actions
 pub struct AuditTrailService {
+    #[allow(dead_code)]
     log_file: PathBuf,
     file_handle: Arc<Mutex<std::fs::File>>,
 }

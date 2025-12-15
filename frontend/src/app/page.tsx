@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/store/auth';
 import { BRAND } from '@/lib/brand';
+import { motion, AnimatePresence } from 'framer-motion';
 
 export default function HomePage() {
   const router = useRouter();
@@ -13,8 +14,8 @@ export default function HomePage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [loginStatus, setLoginStatus] = useState<string | null>(null);
 
-  const isMockMode = !process.env.NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY ||
-    process.env.NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY.includes('YOUR_KEY_HERE');
+  const isMockMode = typeof process !== 'undefined' && (!process.env.NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_MAGIC_PUBLISHABLE_KEY.includes('YOUR_KEY_HERE'));
 
   useEffect(() => {
     if (!isInitialized) {
@@ -89,246 +90,116 @@ export default function HomePage() {
 
   if (isLoading && !isInitialized) {
     return (
-      <div className="landing-container">
-        <div className="content">
-          <p className="coming-soon">loading...</p>
-        </div>
-        <style jsx>{styles}</style>
+      <div className="min-h-screen bg-black text-white flex flex-col justify-center items-center p-8">
+        <motion.p
+          className="text-2xl font-light italic opacity-90"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+        >
+          loading...
+        </motion.p>
       </div>
     );
   }
 
   return (
-    <div className="landing-container">
-      <div className="content">
-        {!showLogin ? (
-          <>
-            <h1>{BRAND.tagline}</h1>
-            <h2>this <em>might</em> ruin your friendships.</h2>
-            <p className="coming-soon" onClick={() => setShowLogin(true)} style={{ cursor: 'pointer' }}>
-              enter →
-            </p>
-          </>
-        ) : (
-          <form onSubmit={handleEmailLogin} className="login-form">
-            <h1>sign in</h1>
-
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="your email"
-              className="email-input"
-              autoFocus
-              disabled={isSubmitting}
-            />
-
-            {error && <p className="error-text">{error}</p>}
-
-            {loginStatus ? (
-              <p className="coming-soon">{loginStatus}</p>
-            ) : (
-              <button type="submit" disabled={!email || isSubmitting} className="coming-soon submit-btn">
-                continue →
-              </button>
-            )}
-
-            <p className="hint">
-              {isMockMode
-                ? 'dev mode — instant login'
-                : isSubmitting
-                  ? 'click the link in your email'
-                  : 'we\'ll send you a magic link'
-              }
-            </p>
-
-            <p className="hint-small">a solana wallet will be created for you</p>
-
-            {!isSubmitting ? (
-              <button
-                type="button"
-                onClick={() => { setShowLogin(false); setLoginStatus(null); setEmail(''); }}
-                className="back-link"
+    <div className="min-h-screen bg-black text-white flex flex-col justify-center items-center p-8 overflow-hidden fixed inset-0">
+      <div className="w-full max-w-2xl mx-auto flex flex-col items-center">
+        <AnimatePresence mode="wait">
+          {!showLogin ? (
+            <motion.div
+              key="landing"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.5 }}
+              className="text-center"
+            >
+              <h1 className="text-4xl md:text-6xl lg:text-7xl font-light mb-8 md:mb-12 leading-tight tracking-tight">
+                {BRAND.tagline}
+              </h1>
+              <h2 className="text-2xl md:text-3xl lg:text-4xl font-light mb-12 md:mb-16 leading-tight opacity-90">
+                this <em className="font-serif italic font-light opacity-80">might</em> ruin your friendships.
+              </h2>
+              <motion.p
+                className="text-2xl md:text-4xl italic font-light cursor-pointer hover:opacity-100 opacity-90 transition-opacity mt-8"
+                onClick={() => setShowLogin(true)}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
               >
-                ← back
-              </button>
-            ) : !isMockMode && (
-              <button
-                type="button"
-                onClick={() => { setIsSubmitting(false); setLoginStatus(null); }}
-                className="back-link"
-              >
-                cancel
-              </button>
-            )}
-          </form>
-        )}
+                enter →
+              </motion.p>
+            </motion.div>
+          ) : (
+            <motion.form
+              key="login"
+              onSubmit={handleEmailLogin}
+              className="w-full flex flex-col items-center"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              transition={{ duration: 0.5 }}
+            >
+              <h1 className="text-3xl md:text-5xl font-light mb-12">sign in</h1>
+
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="your email"
+                className="w-full max-w-md bg-transparent border-0 border-b border-white/30 text-white text-center text-xl md:text-2xl py-3 focus:outline-none focus:border-white/60 transition-colors placeholder:text-white/40 placeholder:italic mb-8"
+                autoFocus
+                disabled={isSubmitting}
+              />
+
+              {error && <p className="text-red-400 mt-4 text-sm md:text-base">{error}</p>}
+
+              {loginStatus ? (
+                <p className="text-2xl italic mt-6 opacity-90">{loginStatus}</p>
+              ) : (
+                <motion.button
+                  type="submit"
+                  disabled={!email || isSubmitting}
+                  className="bg-transparent border-0 text-white text-2xl md:text-3xl italic cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed mt-8 hover:scale-105 transition-transform"
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  continue →
+                </motion.button>
+              )}
+
+              <p className="mt-8 text-base md:text-lg opacity-60">
+                {isMockMode
+                  ? 'dev mode — instant login'
+                  : isSubmitting
+                    ? 'click the link in your email'
+                    : 'we\'ll send you a magic link'
+                }
+              </p>
+
+              <p className="mt-2 text-sm opacity-40">a solana wallet will be created for you</p>
+
+              {!isSubmitting ? (
+                <button
+                  type="button"
+                  onClick={() => { setShowLogin(false); setLoginStatus(null); setEmail(''); }}
+                  className="mt-12 bg-transparent border-0 text-white opacity-40 hover:opacity-70 transition-opacity cursor-pointer text-base md:text-lg"
+                >
+                  ← back
+                </button>
+              ) : !isMockMode && (
+                <button
+                  type="button"
+                  onClick={() => { setIsSubmitting(false); setLoginStatus(null); }}
+                  className="mt-12 bg-transparent border-0 text-white opacity-40 hover:opacity-70 transition-opacity cursor-pointer text-base md:text-lg"
+                >
+                  cancel
+                </button>
+              )}
+            </motion.form>
+          )}
+        </AnimatePresence>
       </div>
-      <style jsx>{styles}</style>
     </div>
   );
 }
-
-const styles = `
-  * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-  }
-
-  .landing-container {
-    background-color: #000000;
-    color: #ffffff;
-    font-family: inherit;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-    height: 100vh;
-    height: 100dvh;
-    width: 100vw;
-    text-align: center;
-    padding: 5vw;
-    overflow: hidden;
-    position: fixed; /* Ensures it acts like the body overlay */
-    top: 0;
-    left: 0;
-  }
-
-  /* .container class removed in favor of .landing-container acting as wrapper */
-
-  .content {
-    max-width: 90vw;
-    width: 100%;
-    margin: 0 auto;
-  }
-/* ... rest of styles unchanged ... */
-
-  h1 {
-    font-size: clamp(1.2rem, 5vw, 2rem);
-    font-weight: normal;
-    margin-bottom: clamp(1.5rem, 5vw, 3rem);
-    line-height: 1.2;
-  }
-
-  h2 {
-    font-size: clamp(1.2rem, 5vw, 2rem);
-    font-weight: normal;
-    margin-bottom: clamp(1.5rem, 5vw, 3rem);
-    line-height: 1.2;
-  }
-
-  .coming-soon {
-    font-size: clamp(1.2rem, 5vw, 2rem);
-    font-style: italic;
-    margin-top: clamp(3rem, 10vw, 6rem);
-    opacity: 0.9;
-    transition: opacity 0.2s ease;
-  }
-
-  .coming-soon:hover {
-    opacity: 1;
-  }
-
-  .submit-btn {
-    background: none;
-    border: none;
-    color: white;
-    cursor: pointer;
-    font-family: inherit;
-  }
-
-  .submit-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-  }
-
-  .login-form {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .email-input {
-    font-size: clamp(1rem, 4vw, 1.5rem);
-    font-family: inherit;
-    padding: clamp(0.5rem, 2vw, 1rem);
-    width: 100%;
-    max-width: 400px;
-    text-align: center;
-    background: transparent;
-    border: none;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.3);
-    color: white;
-    margin-bottom: 0;
-  }
-
-  .email-input:focus {
-    outline: none;
-    border-bottom-color: rgba(255, 255, 255, 0.6);
-  }
-
-  .email-input::placeholder {
-    color: rgba(255, 255, 255, 0.4);
-    font-style: italic;
-  }
-
-  .error-text {
-    font-size: clamp(0.9rem, 3vw, 1.1rem);
-    color: #ff6b6b;
-    margin-top: clamp(1rem, 3vw, 1.5rem);
-  }
-
-  .hint {
-    font-size: clamp(0.9rem, 3vw, 1.1rem);
-    opacity: 0.6;
-    margin-top: clamp(2rem, 5vw, 3rem);
-  }
-
-  .hint-small {
-    font-size: clamp(0.8rem, 2.5vw, 1rem);
-    opacity: 0.4;
-    margin-top: clamp(0.5rem, 1.5vw, 1rem);
-  }
-
-  .back-link {
-    font-size: clamp(0.9rem, 3vw, 1.1rem);
-    background: none;
-    border: none;
-    color: white;
-    opacity: 0.4;
-    cursor: pointer;
-    margin-top: clamp(2rem, 5vw, 3rem);
-    font-family: inherit;
-  }
-
-  .back-link:hover {
-    opacity: 0.7;
-  }
-
-  /* Tablet specific adjustments */
-  @media (min-width: 768px) and (max-width: 1024px) {
-    h1, h2 {
-      font-size: clamp(1.5rem, 4vw, 1.8rem);
-    }
-
-    .coming-soon {
-      font-size: clamp(1.5rem, 4vw, 1.8rem);
-    }
-  }
-
-  /* Mobile specific adjustments */
-  @media (max-width: 767px) {
-    body, .container {
-      padding: 4vw;
-    }
-
-    h1, h2 {
-      font-size: clamp(1.2rem, 6vw, 1.6rem);
-    }
-
-    .coming-soon {
-      font-size: clamp(1.2rem, 6vw, 1.6rem);
-    }
-  }
-`;

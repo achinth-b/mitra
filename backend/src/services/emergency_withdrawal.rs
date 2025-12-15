@@ -12,6 +12,7 @@ use uuid::Uuid;
 pub struct EmergencyWithdrawalService {
     bet_repo: Arc<BetRepository>,
     state_manager: Arc<StateManager>,
+    #[allow(dead_code)]
     solana_client: Arc<SolanaClient>,
 }
 
@@ -50,7 +51,7 @@ impl EmergencyWithdrawalService {
         }
 
         // Generate merkle root and proofs
-        let (merkle_root, proofs) = self.state_manager
+        let (_merkle_root, proofs) = self.state_manager
             .generate_merkle_root(event_id)
             .await
             .map_err(|e| AppError::Database(crate::database::DatabaseError::PoolCreation(e)))?;
@@ -68,8 +69,8 @@ impl EmergencyWithdrawalService {
     /// Verify merkle proof against on-chain root
     pub async fn verify_proof_against_chain(
         &self,
-        event_pubkey: &str,
-        proof: &MerkleProof,
+        _event_pubkey: &str,
+        _proof: &MerkleProof,
     ) -> AppResult<bool> {
         // TODO: Fetch last_merkle_root from Solana EventState account
         // For now, return placeholder
@@ -84,7 +85,7 @@ impl EmergencyWithdrawalService {
     /// - Last merkle root was committed >24 hours ago
     pub async fn is_emergency_withdrawal_available(
         &self,
-        event_pubkey: &str,
+        _event_pubkey: &str,
     ) -> AppResult<bool> {
         // TODO: Check last commit time from Solana
         // For now, return false

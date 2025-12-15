@@ -11,7 +11,6 @@ use mitra_backend::config::AppConfig;
 use mitra_backend::database::{create_pool, run_migrations};
 use mitra_backend::error::{AppError, AppResult};
 use mitra_backend::grpc_service::{self, MitraGrpcService};
-use mitra_backend::repositories::*;
 use mitra_backend::services::{AuditTrailService, EmergencyWithdrawalService, MlPoller, SettlementService};
 use mitra_backend::solana_client::{SolanaClient, SolanaConfig};
 use mitra_backend::state_manager::StateManager;
