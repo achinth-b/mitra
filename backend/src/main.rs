@@ -35,11 +35,15 @@ async fn main() -> AppResult<()> {
     })?;
 
     // Initialize tracing/logging with config
+    // Always suppress sqlx query logs which are very noisy
+    let base_filter = std::env::var("RUST_LOG")
+        .unwrap_or_else(|_| format!("mitra_backend={},tonic=info", config.log_level));
+    let filter_with_sqlx_off = format!("{},sqlx=off", base_filter);
+    
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                format!("mitra_backend={},sqlx=warn,tonic=info", config.log_level).into()
-            }),
+            tracing_subscriber::EnvFilter::try_new(&filter_with_sqlx_off)
+                .unwrap_or_else(|_| format!("mitra_backend={},sqlx=off,tonic=info", config.log_level).into())
         )
         .init();
 

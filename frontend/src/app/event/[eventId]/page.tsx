@@ -147,51 +147,208 @@ export default function EventPage() {
   const isActive = event.status === 'active';
 
   return (
-    <main className="min-h-screen px-8 py-16 md:py-24">
-      <div className="max-w-3xl mx-auto">
-        {/* Header */}
-        <header className="mb-16">
-          <button
-            onClick={() => router.back()}
-            className="text-xl text-white/40 hover:text-white transition-opacity mb-10 block"
-          >
-            ← back
-          </button>
-          <h1 className="text-3xl md:text-5xl leading-tight mb-6">{event.title}</h1>
+    <main className="min-h-screen bg-[#080808] flex justify-center">
+      <div className="w-full max-w-2xl px-6 py-16">
 
-          {isActive && prices && (
-            <p className="text-lg text-white/40">
-              {formatUsd(prices.totalVolume)} total volume
-            </p>
-          )}
+        {/* Back Button */}
+        <button
+          onClick={() => router.back()}
+          className="text-sm text-white/40 hover:text-white/70 transition-colors mb-12 flex items-center gap-2 group"
+        >
+          <span className="group-hover:-translate-x-1 transition-transform">←</span>
+          back
+        </button>
 
-          {event.status === 'resolved' && (
-            <p className="text-xl text-white/60">
-              resolved: <span className="italic">{event.winningOutcome}</span>
-            </p>
-          )}
+        {/* Title Section - Centered */}
+        <header className="text-center mb-16">
+          <h1 className="text-3xl md:text-5xl font-light leading-tight mb-6 text-white text-center">
+            {event.title}
+          </h1>
+
+          <div className="flex items-center justify-center gap-6 flex-wrap">
+            {isActive && prices && (
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="text-sm text-emerald-400 font-medium uppercase tracking-wider">Live</span>
+              </div>
+            )}
+
+            {isActive && prices && (
+              <span className="text-sm text-white/50">
+                <span className="text-white font-mono text-lg">{formatUsd(prices.totalVolume)}</span> volume
+              </span>
+            )}
+
+            {event.status === 'resolved' && (
+              <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-blue-500/15 border border-blue-500/30">
+                <span className="text-sm text-blue-400 uppercase tracking-wide">Winner:</span>
+                <span className="text-lg text-blue-400 font-semibold">{event.winningOutcome}</span>
+              </div>
+            )}
+          </div>
         </header>
 
-        {/* Current Odds */}
+        {/* Odds Section */}
         {isActive && prices && (
           <section className="mb-16">
-            <h2 className="text-xl text-white/40 mb-8">current odds</h2>
-            <div className="flex gap-16">
-              {event.outcomes.map((outcome) => {
+
+            {/* Big Odds Display - Centered */}
+            <div className="grid grid-cols-2 gap-6 mb-12">
+              {event.outcomes.map((outcome, idx) => {
                 const price = prices.prices[outcome] || 0.5;
                 const isSelected = selectedOutcome === outcome;
+                const isFirst = idx === 0;
 
                 return (
                   <button
                     key={outcome}
                     onClick={() => setSelectedOutcome(isSelected ? null : outcome)}
-                    className={`text-left transition-all ${isSelected ? '' : 'opacity-60 hover:opacity-100'}`}
+                    className={`relative p-8 rounded-3xl border-2 transition-all duration-300 text-center overflow-hidden ${isSelected
+                      ? isFirst
+                        ? 'border-emerald-500 bg-emerald-500/10 shadow-lg shadow-emerald-500/20'
+                        : 'border-rose-500 bg-rose-500/10 shadow-lg shadow-rose-500/20'
+                      : 'border-white/10 bg-white/5 hover:border-white/20 hover:bg-white/8'
+                      }`}
                   >
-                    <p className="text-5xl md:text-6xl mb-2">{formatPrice(price)}</p>
-                    <p className="text-xl">{outcome}</p>
+                    {/* Glow effect */}
+                    <div className={`absolute inset-0 blur-2xl opacity-30 ${isFirst ? 'bg-emerald-500' : 'bg-rose-500'
+                      } ${isSelected ? 'opacity-40' : 'opacity-0'} transition-opacity`} />
+
+                    <div className="relative">
+                      <p className={`text-5xl md:text-7xl font-bold tabular-nums mb-3 ${isFirst ? 'text-emerald-400' : 'text-rose-400'
+                        }`}>
+                        {formatPrice(price)}
+                      </p>
+                      <p className="text-xl text-white/60 capitalize font-light">{outcome}</p>
+
+                      {isSelected && (
+                        <div className="absolute -top-2 -right-2">
+                          <span className="text-xs bg-white text-black px-2 py-1 rounded-full font-semibold uppercase">
+                            Selected
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </button>
                 );
               })}
+            </div>
+
+            {/* Probability Bar - Centered */}
+            <div className="mb-12">
+              <div className="flex items-center justify-center gap-8 mb-4">
+                {event.outcomes.map((outcome, idx) => {
+                  const price = prices.prices[outcome] || 0.5;
+                  const isFirst = idx === 0;
+                  return (
+                    <div key={outcome} className="flex items-center gap-2">
+                      <div className={`w-3 h-3 rounded-full ${isFirst ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                      <span className="text-sm text-white/60 capitalize">{outcome}</span>
+                      <span className={`text-sm font-bold tabular-nums ${isFirst ? 'text-emerald-400' : 'text-rose-400'}`}>
+                        {formatPrice(price)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Bar */}
+              <div className="h-4 rounded-full overflow-hidden bg-white/5 border border-white/10 flex">
+                {event.outcomes.map((outcome, idx) => {
+                  const price = prices.prices[outcome] || 0.5;
+                  const isFirst = idx === 0;
+                  return (
+                    <div
+                      key={outcome}
+                      className={`h-full transition-all duration-700 ease-out ${isFirst
+                        ? 'bg-gradient-to-r from-emerald-600 to-emerald-400'
+                        : 'bg-gradient-to-r from-rose-400 to-rose-600'
+                        }`}
+                      style={{ width: `${price * 100}%` }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Price History Chart */}
+            <div className="p-6 rounded-2xl bg-white/[0.02] border border-white/10">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-medium text-white/40 uppercase tracking-wider">Price History</h3>
+                <div className="flex items-center gap-4 text-xs">
+                  <span className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                    <span className="text-white/50 capitalize">{event.outcomes[0]}</span>
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <div className="w-2 h-2 rounded-full bg-rose-500" />
+                    <span className="text-white/50 capitalize">{event.outcomes[1]}</span>
+                  </span>
+                </div>
+              </div>
+
+              {/* Chart Container */}
+              <div className="relative">
+                {/* Y-axis labels */}
+                <div className="absolute left-0 top-0 bottom-6 w-10 flex flex-col justify-between text-right pr-2">
+                  <span className="text-[10px] text-white/30 font-mono">100%</span>
+                  <span className="text-[10px] text-white/30 font-mono">75%</span>
+                  <span className="text-[10px] text-white/30 font-mono">50%</span>
+                  <span className="text-[10px] text-white/30 font-mono">25%</span>
+                  <span className="text-[10px] text-white/30 font-mono">0%</span>
+                </div>
+
+                {/* Chart Area */}
+                <div className="ml-12 h-40 relative">
+                  {/* Horizontal grid lines */}
+                  <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <div key={i} className="h-px bg-white/5 w-full" />
+                    ))}
+                  </div>
+
+                  {/* SVG Chart */}
+                  <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none" viewBox="0 0 100 100">
+                    {/* Yes line */}
+                    <polyline
+                      fill="none"
+                      stroke="rgb(52, 211, 153)"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      points={`0,50 12,48 25,52 37,45 50,47 62,42 75,48 87,52 100,${100 - (prices.prices[event.outcomes[0]] || 0.5) * 100}`}
+                    />
+                    {/* No line */}
+                    <polyline
+                      fill="none"
+                      stroke="rgb(251, 113, 133)"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      points={`0,50 12,52 25,48 37,55 50,53 62,58 75,52 87,48 100,${100 - (prices.prices[event.outcomes[1]] || 0.5) * 100}`}
+                    />
+                  </svg>
+
+                  {/* Current price indicators on right edge */}
+                  <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-2 flex flex-col gap-1">
+                    <span className="text-[10px] font-mono text-emerald-400 bg-[#0a0a0a] px-1 rounded">
+                      {Math.round((prices.prices[event.outcomes[0]] || 0.5) * 100)}%
+                    </span>
+                    <span className="text-[10px] font-mono text-rose-400 bg-[#0a0a0a] px-1 rounded">
+                      {Math.round((prices.prices[event.outcomes[1]] || 0.5) * 100)}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* X-axis date labels */}
+                <div className="ml-12 flex justify-between mt-2 text-[10px] text-white/30 font-mono">
+                  <span>{new Date(event.createdAt * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                  <span>{new Date((event.createdAt + (Date.now() / 1000 - event.createdAt) * 0.25) * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                  <span>{new Date((event.createdAt + (Date.now() / 1000 - event.createdAt) * 0.5) * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                  <span>{new Date((event.createdAt + (Date.now() / 1000 - event.createdAt) * 0.75) * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>
+                  <span>Now</span>
+                </div>
+              </div>
             </div>
           </section>
         )}

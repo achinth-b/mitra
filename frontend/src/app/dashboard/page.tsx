@@ -67,7 +67,7 @@ export default function DashboardPage() {
     if (user.walletAddress && groups.length > 0 && pageReady) {
       const firstGroup = groups[0];
       if (firstGroup.solanaPubkey && !firstGroup.solanaPubkey.includes('_')) {
-        getBalance(firstGroup.solanaPubkey, user.walletAddress).then(setBalance);
+        getBalance(firstGroup.groupId, user.walletAddress).then(setBalance);
       }
     }
   }, [user.walletAddress, groups, pageReady]);
@@ -118,13 +118,13 @@ export default function DashboardPage() {
         }
       }
 
-      const success = await deposit(group.solanaPubkey, user.walletAddress, amount, signature, 'sol');
+      const success = await deposit(group.groupId, user.walletAddress, amount, signature, 'sol');
 
       if (success) {
         setShowDeposit(false);
         setTransactionAmount('');
         // Refresh balance
-        const bal = await getBalance(group.solanaPubkey, user.walletAddress);
+        const bal = await getBalance(group.groupId, user.walletAddress);
         setBalance(bal);
       } else {
         setTransactionError("Deposit failed backend verification");
@@ -152,7 +152,7 @@ export default function DashboardPage() {
         throw new Error('Please create a group first to use wallet features');
       }
 
-      const result = await withdraw(firstGroup.solanaPubkey, user.walletAddress, amountUsdc);
+      const result = await withdraw(firstGroup.groupId, user.walletAddress, amountUsdc);
 
       if (result.success) {
         setBalance({

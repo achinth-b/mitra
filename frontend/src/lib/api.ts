@@ -89,12 +89,43 @@ export async function createGroup(
   throw new Error('Backend unavailable');
 }
 
+// Validate if a string looks like a UUID
+function isValidUUID(str: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+}
+
+// Validate if a string looks like a Solana pubkey (base58, 32-44 chars)
+function isValidSolanaPubkey(str: string): boolean {
+  const base58Regex = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+  return base58Regex.test(str);
+}
+
 export async function getGroups(walletAddress: string): Promise<FriendGroup[]> {
-  // In a real app avoiding local storage as primary source would be better,
-  // but keeping it for list caching is acceptable for now.
   const stored = localStorage.getItem('mitra_groups');
   if (stored) {
-    return JSON.parse(stored);
+    const groups = JSON.parse(stored) as FriendGroup[];
+    
+    // Filter out corrupted groups - keep only those with valid UUIDs and pubkeys
+    const validGroups = groups.filter(g => {
+      const hasValidGroupId = g.groupId && isValidUUID(g.groupId);
+      const hasValidPubkey = g.solanaPubkey && isValidSolanaPubkey(g.solanaPubkey);
+      const hasValidName = g.name && typeof g.name === 'string';
+      
+      if (!hasValidGroupId || !hasValidPubkey || !hasValidName) {
+        console.warn('Removing corrupted group from localStorage:', g);
+        return false;
+      }
+      return true;
+    });
+    
+    // If we filtered any groups, save the cleaned list
+    if (validGroups.length !== groups.length) {
+      localStorage.setItem('mitra_groups', JSON.stringify(validGroups));
+      console.log(`Cleaned localStorage: removed ${groups.length - validGroups.length} corrupted groups`);
+    }
+    
+    return validGroups;
   }
   return [];
 }
@@ -219,13 +250,75 @@ export function saveEvents(groupId: string, events: Event[]): void {
 }
 
 export async function getEvent(eventId: string): Promise<Event | null> {
-  // Search all groups for this event
+  console.log('getEvent called for:', eventId); // Debug
+  
+  // First search localStorage cache
   const allKeys = Object.keys(localStorage).filter(k => k.startsWith('mitra_events_'));
+  console.log('Checking localStorage keys:', allKeys); // Debug
+  
   for (const key of allKeys) {
     const events = JSON.parse(localStorage.getItem(key) || '[]') as Event[];
     const found = events.find(e => e.eventId === eventId);
-    if (found) return found;
+    if (found) {
+      console.log('Found event in cache:', found); // Debug
+      return found;
+    }
   }
+  
+  console.log('Event not in cache, fetching from backend'); // Debug
+  
+  // Not in cache - fetch from backend
+  const isOnline = await checkBackend();
+  
+  if (isOnline) {
+    try {
+      const res = await fetch(API_BASE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          method: 'GetEvent',
+          data: { event_id: eventId },
+        }),
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        console.log('GetEvent raw response:', data); // Debug log
+        
+        const event: Event = {
+          eventId: data.eventId || data.event_id,
+          groupId: data.groupId || data.group_id,
+          solanaPubkey: data.solanaPubkey || data.solana_pubkey,
+          title: data.title,
+          description: data.description,
+          outcomes: data.outcomes,
+          settlementType: data.settlementType || data.settlement_type,
+          status: data.status,
+          resolveBy: data.resolveBy || data.resolve_by,
+          createdAt: data.createdAt || data.created_at,
+          arbiterWallet: data.arbiterWallet || data.arbiter_wallet,
+        };
+        
+        console.log('Parsed event:', event); // Debug log
+        
+        // Cache the event in localStorage for this group
+        const groupId = event.groupId;
+        const events = JSON.parse(localStorage.getItem(`mitra_events_${groupId}`) || '[]') as Event[];
+        // Only add if not already present
+        if (!events.find(e => e.eventId === eventId)) {
+          events.push(event);
+          localStorage.setItem(`mitra_events_${groupId}`, JSON.stringify(events));
+        }
+        
+        return event;
+      } else {
+        console.error('Failed to fetch event:', await res.text());
+      }
+    } catch (e) {
+      console.error('Backend error:', e);
+    }
+  }
+  
   return null;
 }
 
@@ -523,7 +616,7 @@ function updateEventStatus(eventId: string, status: string, winningOutcome?: str
 // ===========================================
 
 export async function getBalance(
-  groupSolanaPubkey: string,
+  groupId: string,
   userWallet: string
 ): Promise<BalanceResponse> {
   const isOnline = await checkBackend();
@@ -536,7 +629,7 @@ export async function getBalance(
         body: JSON.stringify({
           method: 'GetUserBalance',
           data: {
-            group_id: groupSolanaPubkey, 
+            group_id: groupId, 
             user_wallet: userWallet,
           },
         }),
@@ -561,7 +654,7 @@ export async function getBalance(
 }
 
 export async function deposit(
-  groupSolanaPubkey: string,
+  groupId: string,
   userWallet: string,
   amount: number,
   signature: string = 'dev',
@@ -577,7 +670,7 @@ export async function deposit(
         body: JSON.stringify({
           method: 'DepositFunds',
           data: {
-            group_id: groupSolanaPubkey,
+            group_id: groupId,
             user_wallet: userWallet,
             amount_sol: type === 'sol' ? amount : 0,
             amount_usdc: type === 'usdc' ? amount : 0,
@@ -607,7 +700,7 @@ export async function deposit(
 }
 
 export async function withdraw(
-  groupSolanaPubkey: string,
+  groupId: string,
   userWallet: string,
   amountUsdc: number,
   signature: string = 'dev'
@@ -622,7 +715,7 @@ export async function withdraw(
         body: JSON.stringify({
           method: 'WithdrawFunds',
           data: {
-            group_id: groupSolanaPubkey,
+            group_id: groupId,
             user_wallet: userWallet,
             amount_sol: 0,
             amount_usdc: amountUsdc,

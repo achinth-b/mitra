@@ -77,7 +77,7 @@ export default function GroupPage() {
 
           // Only fetch balance if we have a valid Sol pubkey (no mock/underscores)
           if (found.solanaPubkey && !found.solanaPubkey.includes('_')) {
-            getBalance(found.solanaPubkey, walletAddress).then(setBalance);
+            getBalance(found.groupId, walletAddress).then(setBalance);
           }
         }
       });
@@ -116,8 +116,9 @@ export default function GroupPage() {
     setIsCreating(true);
     try {
       const outcomes = [outcome1, outcome2];
+      // Use group.groupId (cleaned UUID) instead of URL params which may have legacy format
       const newEvent = await createEvent(
-        groupId as string,
+        group.groupId,
         title,
         '', // description
         outcomes,
@@ -191,7 +192,7 @@ export default function GroupPage() {
       // Wait for confirmation then refresh balance
       setTimeout(async () => {
         if (user.walletAddress && group) { // Re-check existence
-          const bal = await getBalance(group.solanaPubkey!, user.walletAddress); // Changed group.id to group.solanaPubkey!
+          const bal = await getBalance(group.groupId, user.walletAddress);
           setBalance(bal);
         }
         setIsTransacting(false);
@@ -245,14 +246,14 @@ export default function GroupPage() {
         }
       }
 
-      const success = await deposit(group!.solanaPubkey!, user.walletAddress, amount, signature, 'sol');
+      const success = await deposit(group!.groupId!, user.walletAddress, amount, signature, 'sol');
 
       if (success) {
         setShowDeposit(false);
         setTransactionAmount('');
         // Refresh balance
         if (group?.solanaPubkey) {
-          const bal = await getBalance(group.solanaPubkey, user.walletAddress);
+          const bal = await getBalance(group.groupId, user.walletAddress);
           setBalance(bal);
         }
       } else {
@@ -279,7 +280,7 @@ export default function GroupPage() {
         throw new Error('This group is not on-chain (mock). Please create a new group.');
       }
 
-      const result = await withdraw(group.solanaPubkey, user.walletAddress, amountUsdc);
+      const result = await withdraw(group.groupId, user.walletAddress, amountUsdc);
 
       if (result.success) {
         setBalance({
@@ -673,58 +674,86 @@ export default function GroupPage() {
 
             {/* Markets List */}
             {events.length > 0 ? (
-              <ul className="flex flex-col gap-3">
+              <ul className="flex flex-col gap-4">
                 {events.map((event) => {
                   const eventPrices = prices[event.eventId];
                   const isActive = event.status === 'active';
+                  const outcomes = event.outcomes || ['yes', 'no'];
 
                   return (
                     <li key={event.eventId}>
                       <button
                         onClick={() => router.push(`/event/${event.eventId}`)}
-                        className="w-full text-left p-6 rounded-2xl bg-[#0d0d0d] border border-[#222] hover:border-[#444] hover:bg-[#111] transition-all group relative overflow-hidden"
+                        className="w-full p-6 md:p-8 rounded-2xl bg-[#0a0a0a] border border-white/10 hover:border-indigo-500/30 hover:bg-[#0d0d0d] transition-all duration-200 text-left group"
                       >
-                        <div className="flex justify-between items-start relative z-10">
-                          <div className="flex-1">
-                            <h3 className="text-xl text-white mb-4 font-light group-hover:text-indigo-300 transition-colors">{event.title}</h3>
+                        {/* Title Row */}
+                        <div className="flex items-start justify-between gap-4 mb-6">
+                          <h3 className="text-xl md:text-2xl text-white font-normal leading-snug group-hover:text-indigo-200 transition-colors">
+                            {event.title}
+                          </h3>
 
-                            <div className="flex items-center gap-6">
-                              <div className="flex items-baseline gap-2">
-                                <span className="text-xs text-gray-500 uppercase tracking-wide">Volume</span>
-                                <span className="text-sm text-gray-300 font-mono">
-                                  {eventPrices ? formatVolume(eventPrices.totalVolume) : '$0'}
-                                </span>
-                              </div>
-                              <div className="flex items-baseline gap-2">
-                                <span className="text-xs text-gray-500 uppercase tracking-wide">Expiry</span>
-                                <span className="text-sm text-gray-300 font-mono">
-                                  {event.resolveBy ? new Date(event.resolveBy * 1000).toLocaleDateString() : 'Never'}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Probabilities (Visual) */}
-                          <div className="flex gap-1 items-end h-12 ml-6 opacity-40 group-hover:opacity-100 transition-opacity">
-                            <div className="w-1.5 bg-green-500 rounded-t" style={{ height: '60%' }} />
-                            <div className="w-1.5 bg-red-500 rounded-t" style={{ height: '40%' }} />
+                          {/* Status Badge */}
+                          <div className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold uppercase tracking-wider flex items-center gap-2 ${isActive
+                              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                              : event.status === 'resolved'
+                                ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                                : 'bg-gray-500/20 text-gray-400 border border-gray-500/30'
+                            }`}>
+                            {isActive && <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />}
+                            {isActive ? 'Live' : event.status}
                           </div>
                         </div>
 
-                        {/* Admin Delete Button */}
-                        {group?.adminWallet === user.walletAddress && (
-                          <div
-                            className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity z-20"
-                            onClick={(e) => handleDeleteEvent(event.eventId, e)}
-                          >
-                            <div className="p-2 rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white transition-all text-xs">
-                              Delete
-                            </div>
+                        {/* Odds Display - Large and Clear */}
+                        {isActive && eventPrices && (
+                          <div className="flex flex-wrap items-center gap-4 mb-6">
+                            {outcomes.map((outcome, idx) => {
+                              const price = eventPrices.prices[outcome] || 0.5;
+                              const isYes = idx === 0;
+                              return (
+                                <div
+                                  key={outcome}
+                                  className={`flex items-center gap-3 px-5 py-3 rounded-xl border ${isYes
+                                      ? 'bg-emerald-500/10 border-emerald-500/20'
+                                      : 'bg-rose-500/10 border-rose-500/20'
+                                    }`}
+                                >
+                                  <span className={`text-sm font-medium uppercase tracking-wide ${isYes ? 'text-emerald-400/80' : 'text-rose-400/80'}`}>
+                                    {outcome}
+                                  </span>
+                                  <span className={`text-2xl md:text-3xl font-bold tabular-nums ${isYes ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                    {Math.round(price * 100)}%
+                                  </span>
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
 
-                        {/* Status Indicator */}
-                        <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-bl from-white/5 to-transparent rounded-bl-full pointer-events-none`} />
+                        {/* Resolved State */}
+                        {event.status === 'resolved' && event.winningOutcome && (
+                          <div className="flex items-center gap-3 px-5 py-3 rounded-xl bg-blue-500/10 border border-blue-500/20 mb-6 w-fit">
+                            <span className="text-sm font-medium uppercase tracking-wide text-blue-400/80">Winner</span>
+                            <span className="text-2xl md:text-3xl font-bold text-blue-400">{event.winningOutcome}</span>
+                          </div>
+                        )}
+
+                        {/* Meta Row - Clear Labels */}
+                        <div className="flex items-center gap-8 pt-4 border-t border-white/5">
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm text-white/40">Volume</span>
+                            <span className="text-base text-white/80 font-mono font-medium">
+                              {eventPrices ? formatVolume(eventPrices.totalVolume) : '$0'}
+                            </span>
+                          </div>
+                          <div className="w-px h-4 bg-white/10" />
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm text-white/40">Expires</span>
+                            <span className="text-base text-white/80 font-mono font-medium">
+                              {event.resolveBy ? new Date(event.resolveBy * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Never'}
+                            </span>
+                          </div>
+                        </div>
                       </button>
                     </li>
                   );

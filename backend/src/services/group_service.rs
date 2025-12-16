@@ -76,10 +76,10 @@ impl GroupService {
             },
         };
 
-        // Create group
+        // Create group - note: repo signature is (solana_pubkey, name, admin_wallet)
         let group = self
             .group_repo
-            .create(name, admin_wallet, &group_pubkey)
+            .create(&group_pubkey, name, admin_wallet)
             .await
             .map_err(|e| AppError::Database(e.into()))?;
 

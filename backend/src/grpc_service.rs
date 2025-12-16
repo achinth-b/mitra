@@ -30,7 +30,7 @@ use proto::{
     DeleteGroupRequest, DeleteGroupResponse,
     DepositRequest, DepositResponse, WithdrawRequest, WithdrawResponse,
     BalanceRequest, BalanceResponse, ClaimRequest, ClaimResponse,
-    GetGroupEventsRequest, EventListResponse,
+    GetGroupEventsRequest, GetEventRequest, EventListResponse,
     FaucetRequest, FaucetResponse,
 };
 
@@ -74,6 +74,7 @@ impl MitraGrpcService {
             app_state.event_repo.clone(),
             app_state.user_repo.clone(),
             app_state.balance_repo.clone(),
+            app_state.friend_group_repo.clone(),
             app_state.solana_client.clone(),
         ));
 
@@ -284,6 +285,36 @@ impl MitraService for MitraGrpcService {
 
         Ok(Response::new(EventListResponse {
             events: proto_events,
+        }))
+    }
+
+    /// Get a single event by ID
+    async fn get_event(
+        &self,
+        request: Request<GetEventRequest>,
+    ) -> Result<Response<EventResponse>, Status> {
+        let req = request.into_inner();
+        let event_id = Self::parse_uuid(&req.event_id, "event_id")?;
+
+        let event = self
+            .event_service
+            .get_event(event_id)
+            .await
+            .map_err(Self::to_status)?;
+
+        let outcomes = event.outcomes_vec();
+        Ok(Response::new(EventResponse {
+            event_id: event.id.to_string(),
+            group_id: event.group_id.to_string(),
+            solana_pubkey: event.solana_pubkey.unwrap_or_default(),
+            title: event.title,
+            description: event.description.unwrap_or_default(),
+            outcomes,
+            settlement_type: event.settlement_type,
+            status: event.status.as_str().to_string(),
+            resolve_by: event.resolve_by.map(|dt| dt.and_utc().timestamp()).unwrap_or(0),
+            created_at: event.created_at.and_utc().timestamp(),
+            arbiter_wallet: event.arbiter_wallet.unwrap_or_default(),
         }))
     }
 

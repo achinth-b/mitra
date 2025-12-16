@@ -131,6 +131,15 @@ impl EventService {
             .map_err(|e| AppError::Database(e.into()))
     }
 
+    /// Get a single event by ID
+    pub async fn get_event(&self, event_id: Uuid) -> AppResult<Event> {
+        self.event_repo
+            .find_by_id(event_id)
+            .await
+            .map_err(|e| AppError::Database(e.into()))?
+            .ok_or_else(|| AppError::NotFound("Event not found".into()))
+    }
+
     /// Get prices for an event
     pub async fn get_event_prices(&self, event_id: Uuid) -> AppResult<EventPrices> {
         let event = self

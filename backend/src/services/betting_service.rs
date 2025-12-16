@@ -2,7 +2,7 @@ use crate::amm::LmsrAmm;
 use crate::auth;
 use crate::error::{AppError, AppResult};
 use crate::models::{Bet, Transaction, TransactionType, UserGroupBalance};
-use crate::repositories::{BalanceRepository, BetRepository, EventRepository, UserRepository};
+use crate::repositories::{BalanceRepository, BetRepository, EventRepository, FriendGroupRepository, UserRepository};
 use crate::services::event_service::EventPrices;
 use crate::solana_client::SolanaClient;
 use rust_decimal::prelude::ToPrimitive;
@@ -19,6 +19,7 @@ pub struct BettingService {
     event_repo: Arc<EventRepository>,
     user_repo: Arc<UserRepository>,
     balance_repo: Arc<BalanceRepository>,
+    group_repo: Arc<FriendGroupRepository>,
     solana_client: Arc<SolanaClient>,
 }
 
@@ -35,6 +36,7 @@ impl BettingService {
         event_repo: Arc<EventRepository>,
         user_repo: Arc<UserRepository>,
         balance_repo: Arc<BalanceRepository>,
+        group_repo: Arc<FriendGroupRepository>,
         solana_client: Arc<SolanaClient>,
     ) -> Self {
         Self {
@@ -42,6 +44,7 @@ impl BettingService {
             event_repo,
             user_repo,
             balance_repo,
+            group_repo,
             solana_client,
         }
     }
@@ -171,14 +174,22 @@ impl BettingService {
             return Err(AppError::Validation("Must deposit at least some SOL or USDC".into()));
         }
 
+        // Look up the group's Solana pubkey from the database
+        let group = self.group_repo
+            .find_by_id(group_id)
+            .await
+            .map_err(|e| AppError::Database(e.into()))?
+            .ok_or_else(|| AppError::NotFound("Group not found".into()))?;
+
         let from_wallet = Pubkey::from_str(user_wallet)
             .map_err(|e| AppError::Validation(format!("Invalid wallet: {}", e)))?;
         let usdc_account = Pubkey::from_str(user_usdc_account)
             .map_err(|e| AppError::Validation(format!("Invalid USDC account: {}", e)))?;
 
+        // Use the group's actual Solana pubkey for on-chain operations
         let tx_sig = self.solana_client
             .deposit_to_treasury(
-                &group_id.to_string(),
+                &group.solana_pubkey,
                 &from_wallet,
                 &usdc_account,
                 amount_sol,
@@ -225,6 +236,13 @@ impl BettingService {
             return Err(AppError::Validation("Withdraw amount must be positive".into()));
         }
 
+        // Look up the group's Solana pubkey from the database
+        let group = self.group_repo
+            .find_by_id(group_id)
+            .await
+            .map_err(|e| AppError::Database(e.into()))?
+            .ok_or_else(|| AppError::NotFound("Group not found".into()))?;
+
         let user_pubkey = Pubkey::from_str(user_wallet)
             .map_err(|e| AppError::Validation(format!("Invalid wallet: {}", e)))?;
 
@@ -245,9 +263,10 @@ impl BettingService {
         let usdc_pubkey = Pubkey::from_str(user_usdc_account)
             .map_err(|e| AppError::Validation(format!("Invalid USDC account: {}", e)))?;
 
+        // Use the group's actual Solana pubkey for on-chain operations
         let tx_sig = self.solana_client
             .withdraw_from_treasury(
-                &group_id.to_string(),
+                &group.solana_pubkey,
                 &user_pubkey,
                 &usdc_pubkey,
                 0, // amount_sol

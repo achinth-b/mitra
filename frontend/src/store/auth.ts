@@ -96,8 +96,11 @@ export const useAuthStore = create<AuthState>()(
       checkAuth: async () => {
         const state = get();
         
-        // If already initialized and logged in with wallet, skip
+        // If already initialized and logged in with wallet, skip but ensure loading is false
         if (state.isInitialized && state.user.isLoggedIn && state.user.walletAddress) {
+          if (state.isLoading) {
+            set({ isLoading: false });
+          }
           return;
         }
         
