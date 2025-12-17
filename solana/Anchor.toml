@@ -7,7 +7,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-friend_groups = "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
+friend_groups = "A4hEysUGCcMWtuiWMCUZr8nw6mL8WDkTsKXjifTttCQJ"
 events = "GHzeKGDCAsPzt2BMkXrS8y8azC4jDYec2SNuwd4tmZ9F"
 treasury = "38uX65g1HHMyoJ7WdtqqjrTrJEjD23WxZnLai6NUnUNB"
 

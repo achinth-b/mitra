@@ -43,10 +43,8 @@ export async function createGroup(
   
   if (isOnline) {
     try {
-      // Generate a valid base58 string for the group pubkey
-      const groupKeypair = Keypair.generate();
-      const groupPubkey = groupKeypair.publicKey.toBase58();
-
+      // DO NOT generate pubkey client-side - let backend create on-chain
+      // The backend will create the group on Solana and return the real pubkey
       const res = await fetch(API_BASE, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -55,7 +53,7 @@ export async function createGroup(
           data: {
             name,
             admin_wallet: adminWallet,
-            solana_pubkey: groupPubkey,
+            solana_pubkey: '', // Empty = backend creates on-chain
             signature,
           },
         }),

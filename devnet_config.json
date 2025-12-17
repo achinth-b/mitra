@@ -1,4 +1,5 @@
 {
-  "usdc_mint": "42ASHzH26iCwtVDhNKHBwWfzn2wt6ikVrXwR8CS3HmjP",
-  "faucet_authority": "bbyS868b6aSPSjSLtWwnQdM9ADB4CsHGuNVjZdb5a3p"
+  "usdc_mint": "7jkMMe865C3U7s3hBHywWM6HjaTcFtfbbyGsFW1SMZX2",
+  "faucet_authority": "5zfrtUxpMCCNug8wDVo1pRBRz1kvR9JRGyBYtVVT2QAY",
+  "backend_keypair": "FTnrexqUQADcMtd5gT4sjCnJh77RqSo8JZtx3eyr4VMf"
 }

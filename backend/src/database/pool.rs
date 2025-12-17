@@ -6,7 +6,10 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 pub enum DatabaseError {
     #[error("Failed to create database pool: {0}")]
-    PoolCreation(#[from] sqlx::Error),
+    PoolCreation(sqlx::Error),
+    
+    #[error("Database query error: {0}")]
+    QueryError(sqlx::Error),
     
     #[error("Database connection timeout")]
     ConnectionTimeout,
@@ -16,6 +19,12 @@ pub enum DatabaseError {
 
     #[error("Configuration error: {0}")]
     Config(String),
+}
+
+impl From<sqlx::Error> for DatabaseError {
+    fn from(err: sqlx::Error) -> Self {
+        DatabaseError::QueryError(err)
+    }
 }
 
 /// Database wrapper that holds the connection pool

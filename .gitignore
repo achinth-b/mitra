@@ -65,3 +65,6 @@ docker-compose.override.yml
 .mypy_cache/
 .ruff_cache/
 .pytype/
+
+# Debug output files
+check_*.txt

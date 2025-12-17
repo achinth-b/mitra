@@ -11,16 +11,18 @@ use std::sync::Arc;
 use tracing::{error, info};
 use uuid::Uuid;
 
-/// Vote for consensus settlement
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Vote for consensus settlement (stored in database)
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct SettlementVote {
+    pub id: Uuid,
     pub event_id: Uuid,
     pub voter_wallet: String,
     pub winning_outcome: String,
-    pub timestamp: i64,
+    pub created_at: chrono::NaiveDateTime,
 }
 
 /// Settlement service for handling event settlements
+/// Now uses database-backed voting to eliminate race conditions
 pub struct SettlementService {
     event_repo: Arc<EventRepository>,
     bet_repo: Arc<BetRepository>,
@@ -29,8 +31,6 @@ pub struct SettlementService {
     solana_client: Arc<SolanaClient>,
     ws_server: Arc<WebSocketServer>,
     pool: PgPool,
-    /// Consensus votes: event_id -> votes
-    consensus_votes: Arc<tokio::sync::RwLock<HashMap<Uuid, Vec<SettlementVote>>>>,
 }
 
 impl SettlementService {
@@ -52,7 +52,6 @@ impl SettlementService {
             solana_client,
             ws_server,
             pool,
-            consensus_votes: Arc::new(tokio::sync::RwLock::new(HashMap::new())),
         }
     }
 
@@ -69,7 +68,7 @@ impl SettlementService {
         let event = self.event_repo
             .find_by_id(event_id)
             .await
-            .map_err(|e| AppError::Database(crate::database::DatabaseError::PoolCreation(e)))?
+            .map_err(|e| AppError::Database(e.into()))?
             .ok_or_else(|| AppError::NotFound(format!("Event {} not found", event_id)))?;
 
         // Verify settler is admin
@@ -94,7 +93,7 @@ impl SettlementService {
         let event = self.event_repo
             .find_by_id(event_id)
             .await
-            .map_err(|e| AppError::Database(crate::database::DatabaseError::PoolCreation(e)))?
+            .map_err(|e| AppError::Database(e.into()))?
             .ok_or_else(|| AppError::NotFound(format!("Event {} not found", event_id)))?;
 
         // Determine winning outcome from oracle data
@@ -106,6 +105,9 @@ impl SettlementService {
     }
 
     /// Submit a vote for consensus settlement
+    /// 
+    /// Now uses database-backed voting with row-level locking to prevent race conditions.
+    /// Votes are persisted and survive restarts.
     pub async fn submit_consensus_vote(
         &self,
         event_id: Uuid,
@@ -118,15 +120,20 @@ impl SettlementService {
         let event = self.event_repo
             .find_by_id(event_id)
             .await
-            .map_err(|e| AppError::Database(crate::database::DatabaseError::PoolCreation(e)))?
+            .map_err(|e| AppError::Database(e.into()))?
             .ok_or_else(|| AppError::NotFound(format!("Event {} not found", event_id)))?;
+
+        // Check if event is already resolved
+        if event.is_resolved() {
+            return Err(AppError::BusinessLogic("Event is already resolved".to_string()));
+        }
 
         // Verify voter is group member
         let user = self.get_user_by_wallet(&voter_wallet).await?;
         let is_member = self.group_member_repo
             .is_member(event.group_id, user.id)
             .await
-            .map_err(|e| AppError::Database(crate::database::DatabaseError::PoolCreation(e)))?;
+            .map_err(|e| AppError::Database(e.into()))?;
 
         if !is_member {
             return Err(AppError::Unauthorized("Only group members can vote".to_string()));
@@ -138,41 +145,66 @@ impl SettlementService {
             return Err(AppError::Validation(format!("Invalid outcome: {}", winning_outcome)));
         }
 
-        // Add vote
-        let vote = SettlementVote {
-            event_id,
-            voter_wallet: voter_wallet.clone(),
-            winning_outcome: winning_outcome.clone(),
-            timestamp: chrono::Utc::now().timestamp(),
-        };
+        // Use a database transaction with row-level locking to prevent race conditions
+        let mut tx = self.pool.begin()
+            .await
+            .map_err(|e| AppError::Database(e.into()))?;
 
-        let mut votes = self.consensus_votes.write().await;
-        let event_votes = votes.entry(event_id).or_insert_with(Vec::new);
-        
-        // Check if user already voted
-        if event_votes.iter().any(|v| v.voter_wallet == voter_wallet) {
+        // Try to insert vote - UNIQUE constraint prevents duplicate votes
+        let insert_result = sqlx::query(
+            r#"
+            INSERT INTO settlement_votes (event_id, voter_wallet, winning_outcome)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (event_id, voter_wallet) DO NOTHING
+            RETURNING id
+            "#
+        )
+        .bind(event_id)
+        .bind(&voter_wallet)
+        .bind(&winning_outcome)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(|e| AppError::Database(e.into()))?;
+
+        if insert_result.is_none() {
+            // Vote already exists - conflict detected
             return Err(AppError::BusinessLogic("User has already voted".to_string()));
         }
 
-        event_votes.push(vote);
+        // Count votes and determine if threshold is reached
+        // Use FOR UPDATE to lock the rows during threshold calculation
+        let vote_counts: Vec<(String, i64)> = sqlx::query_as(
+            r#"
+            SELECT winning_outcome, COUNT(*) as count
+            FROM settlement_votes
+            WHERE event_id = $1
+            GROUP BY winning_outcome
+            FOR UPDATE
+            "#
+        )
+        .bind(event_id)
+        .fetch_all(&mut *tx)
+        .await
+        .map_err(|e| AppError::Database(e.into()))?;
 
-        // Check if threshold reached (2/3 majority)
+        let total_votes: i64 = vote_counts.iter().map(|(_, c)| c).sum();
+
+        // Get member count for threshold calculation
         let member_count = self.group_member_repo
             .count_by_group(event.group_id)
             .await
-            .map_err(|e| AppError::Database(crate::database::DatabaseError::PoolCreation(e)))?;
+            .map_err(|e| AppError::Database(e.into()))?;
 
         let threshold = (member_count * 2) / 3; // 2/3 majority
-        let vote_count = event_votes.len() as i64;
 
-        if vote_count >= threshold {
+        // Commit the transaction to save the vote
+        tx.commit()
+            .await
+            .map_err(|e| AppError::Database(e.into()))?;
+
+        if total_votes >= threshold {
             // Determine winning outcome by majority vote
-            let mut outcome_counts: HashMap<String, i64> = HashMap::new();
-            for vote in event_votes.iter() {
-                *outcome_counts.entry(vote.winning_outcome.clone()).or_insert(0) += 1;
-            }
-
-            let winning_outcome = outcome_counts
+            let winning_outcome = vote_counts
                 .into_iter()
                 .max_by_key(|(_, count)| *count)
                 .map(|(outcome, _)| outcome)
@@ -180,13 +212,12 @@ impl SettlementService {
 
             info!("Consensus threshold reached for event {}, settling with outcome: {}", event_id, winning_outcome);
 
-            // Execute settlement
-            drop(votes); // Release lock before async call
+            // Execute settlement (now happens outside the lock)
             self.execute_settlement(&event, &winning_outcome, None).await?;
 
             Ok(true) // Settlement executed
         } else {
-            info!("Consensus vote recorded ({}/{}) for event {}", vote_count, threshold, event_id);
+            info!("Consensus vote recorded ({}/{}) for event {}", total_votes, threshold, event_id);
             Ok(false) // Vote recorded, threshold not reached
         }
     }
@@ -202,7 +233,7 @@ impl SettlementService {
         self.event_repo
             .update_status(event.id, EventStatus::Resolved)
             .await
-            .map_err(|e| AppError::Database(crate::database::DatabaseError::PoolCreation(e)))?;
+            .map_err(|e| AppError::Database(e.into()))?;
 
         // Call Solana program to settle on-chain
         let event_pubkey = event.solana_pubkey.as_ref()
@@ -229,7 +260,7 @@ impl SettlementService {
         
         // Find bets
         let bets = self.bet_repo.find_by_event(event.id).await
-            .map_err(|e| AppError::Database(crate::database::DatabaseError::PoolCreation(e)))?;
+            .map_err(|e| AppError::Database(e.into()))?;
 
         // Calculate total pool and winning shares
         let total_pool: Decimal = bets.iter().map(|b| b.amount_usdc).sum();
@@ -336,7 +367,7 @@ impl SettlementService {
         let role = self.group_member_repo
             .find_role(event.group_id, user.id)
             .await
-            .map_err(|e| AppError::Database(crate::database::DatabaseError::PoolCreation(e)))?;
+            .map_err(|e| AppError::Database(e.into()))?;
 
         Ok(role.map(|r| r == crate::models::MemberRole::Admin).unwrap_or(false))
     }
@@ -363,7 +394,7 @@ impl SettlementService {
         user_repo
             .find_or_create_by_wallet(wallet)
             .await
-            .map_err(|e| AppError::Database(crate::database::DatabaseError::PoolCreation(e)))
+            .map_err(|e| AppError::Database(e.into()))
     }
 }
 

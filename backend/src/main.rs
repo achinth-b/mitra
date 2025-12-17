@@ -117,7 +117,23 @@ async fn main() -> AppResult<()> {
 
     // Get a reference to the Solana client from app_state
     let solana_client = app_state.solana_client.clone();
-    info!("✓ Solana client initialized (simulation mode for PoC)");
+    
+    // P0 SAFETY CHECK: Fail fast in production if no keypair is loaded
+    if config.environment.to_lowercase() == "production" && !solana_client.has_keypair() {
+        error!("╔══════════════════════════════════════════════════════════════════╗");
+        error!("║  FATAL: Production environment requires a valid Solana keypair!  ║");
+        error!("║  Set BACKEND_KEYPAIR_PATH to the path of your keypair file.      ║");
+        error!("╚══════════════════════════════════════════════════════════════════╝");
+        return Err(AppError::Config(
+            "Production environment requires BACKEND_KEYPAIR_PATH to be set and valid. \
+             Solana transactions will fail without a keypair.".to_string()
+        ));
+    } else if !solana_client.has_keypair() {
+        warn!("⚠ Running in SIMULATION MODE - Solana transactions will be simulated, not executed on-chain");
+        warn!("⚠ Set BACKEND_KEYPAIR_PATH for real on-chain operations");
+    } else {
+        info!("✓ Solana client initialized with keypair");
+    }
 
     // Initialize state manager
     let state_manager = Arc::new(StateManager::new(pool.clone()));

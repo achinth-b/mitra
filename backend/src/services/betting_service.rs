@@ -232,10 +232,6 @@ impl BettingService {
 
         auth::verify_auth_with_timestamp(user_wallet, "withdraw_funds", timestamp, signature)?;
 
-        if amount_usdc == 0 {
-            return Err(AppError::Validation("Withdraw amount must be positive".into()));
-        }
-
         // Look up the group's Solana pubkey from the database
         let group = self.group_repo
             .find_by_id(group_id)
@@ -243,51 +239,15 @@ impl BettingService {
             .map_err(|e| AppError::Database(e.into()))?
             .ok_or_else(|| AppError::NotFound("Group not found".into()))?;
 
-        let user_pubkey = Pubkey::from_str(user_wallet)
-            .map_err(|e| AppError::Validation(format!("Invalid wallet: {}", e)))?;
-
-        let user = self.user_repo.find_or_create_by_wallet(user_wallet).await?;
-
-        let amount_decimal = Decimal::from(amount_usdc) / Decimal::from(1_000_000);
-        
-        let current_balance = self.balance_repo.get_balance(user.id, group_id).await.map_err(AppError::from)?;
-        if let Some(b) = current_balance {
-            let available = b.balance_usdc - b.locked_usdc;
-            if available < amount_decimal {
-                 return Err(AppError::BusinessLogic("Insufficient funds".into()));
-            }
-        } else {
-             return Err(AppError::BusinessLogic("No balance found".into()));
-        }
-
-        let usdc_pubkey = Pubkey::from_str(user_usdc_account)
-            .map_err(|e| AppError::Validation(format!("Invalid USDC account: {}", e)))?;
-
-        // Use the group's actual Solana pubkey for on-chain operations
-        let tx_sig = self.solana_client
-            .withdraw_from_treasury(
-                &group.solana_pubkey,
-                &user_pubkey,
-                &usdc_pubkey,
-                0, // amount_sol
-                amount_usdc,
-            )
-            .await?;
-
-        let balance = self.balance_repo
-            .debit_balance(
-                user.id,
-                group_id,
-                amount_decimal,
-                TransactionType::Withdrawal,
-                None,
-                Some(&tx_sig),
-                Some("Withdrawal"),
-            )
-            .await
-            .map_err(AppError::from)?;
-
-        Ok((balance, tx_sig))
+        // Use shared withdrawal logic
+        self.withdraw_internal(
+            group_id,
+            &group.solana_pubkey,
+            user_wallet,
+            user_usdc_account,
+            amount_usdc,
+            "Withdrawal",
+        ).await
     }
 
     /// Get Portfolio
@@ -321,33 +281,46 @@ impl BettingService {
         signature: &str,
         timestamp: i64,
     ) -> AppResult<String> {
-        // Auth is handled in withdraw_funds too, but we check here or let it propagate?
-        // withdraw_funds checks "withdraw_funds" action. claim_winnings checks "claim_winnings" action.
-        // We should verify "claim_winnings" signature here.
         auth::verify_auth_with_timestamp(user_wallet, "claim_winnings", timestamp, signature)?;
 
         // Get Event to find Group ID
         let event = self.event_repo.find_by_id(event_id).await.map_err(AppError::from)?
             .ok_or_else(|| AppError::NotFound("Event not found".into()))?;
 
-        // Delegate to withdraw_funds
-        // Note: usage of "withdraw_funds" internal logic would require duplicating signature check or making internal helper.
-        // For simplicity, we'll just call logic directly or bypass signature check?
-        // Reuse internal logic would be best.
-        // But withdraw_funds checks "withdraw_funds" action! User signed "claim_winnings"!
-        // So we cannot call `withdraw_funds` public method directly because it will fail auth verification.
-        // We must duplicate the logic or extract `withdraw_internal`.
-        
-        // Extraction is cleaner. But for now, duplicating the simple logic (balance check + solana call + db update) is safer than refactoring large existing method blindly.
-        // Actually, logic is:
-        // 1. Validate Amount
-        // 2. Validate Wallet/USDC Account
-        // 3. Check Balance (DB)
-        // 4. Solana Withdraw
-        // 5. DB Debit
+        // Look up the group's Solana pubkey from the database
+        let group = self.group_repo
+            .find_by_id(event.group_id)
+            .await
+            .map_err(|e| AppError::Database(e.into()))?
+            .ok_or_else(|| AppError::NotFound("Group not found".into()))?;
 
+        // Use shared withdrawal logic
+        let (_, tx_sig) = self.withdraw_internal(
+            event.group_id,
+            &group.solana_pubkey,
+            user_wallet,
+            user_usdc_account,
+            amount_usdc,
+            "Claim Winnings",
+        ).await?;
+
+        Ok(tx_sig)
+    }
+
+    /// Internal helper for withdrawal operations (shared between withdraw_funds and claim_winnings)
+    /// 
+    /// This eliminates code duplication by providing a common withdrawal path.
+    async fn withdraw_internal(
+        &self,
+        group_id: Uuid,
+        group_solana_pubkey: &str,
+        user_wallet: &str,
+        user_usdc_account: &str,
+        amount_usdc: u64,
+        description: &str,
+    ) -> AppResult<(UserGroupBalance, String)> {
         if amount_usdc == 0 {
-            return Err(AppError::Validation("Claim amount must be positive".into()));
+            return Err(AppError::Validation("Amount must be positive".into()));
         }
 
         let user_pubkey = Pubkey::from_str(user_wallet)
@@ -359,39 +332,43 @@ impl BettingService {
 
         let amount_decimal = Decimal::from(amount_usdc) / Decimal::from(1_000_000);
         
-        let current_balance = self.balance_repo.get_balance(user.id, event.group_id).await.map_err(AppError::from)?;
+        // Check balance
+        let current_balance = self.balance_repo.get_balance(user.id, group_id).await.map_err(AppError::from)?;
         if let Some(b) = current_balance {
             let available = b.balance_usdc - b.locked_usdc;
             if available < amount_decimal {
-                 return Err(AppError::BusinessLogic("Insufficient funds to claim".into()));
+                return Err(AppError::BusinessLogic("Insufficient funds".into()));
             }
         } else {
-             return Err(AppError::BusinessLogic("No balance found".into()));
+            return Err(AppError::BusinessLogic("No balance found".into()));
         }
 
+        // Execute on-chain withdrawal
         let tx_sig = self.solana_client
             .withdraw_from_treasury(
-                &event.group_id.to_string(),
+                group_solana_pubkey,
                 &user_pubkey,
                 &usdc_pubkey,
-                0, 
+                0, // amount_sol
                 amount_usdc,
             )
             .await?;
 
-        self.balance_repo
+        // Record in database
+        let balance = self.balance_repo
             .debit_balance(
                 user.id,
-                event.group_id,
+                group_id,
                 amount_decimal,
-                TransactionType::Withdrawal, // Or separate Claim type? Use Withdrawal for now.
+                TransactionType::Withdrawal,
                 None,
                 Some(&tx_sig),
-                Some("Claim Winnings"),
+                Some(description),
             )
             .await
             .map_err(AppError::from)?;
 
-        Ok(tx_sig)
+        Ok((balance, tx_sig))
     }
 }
+

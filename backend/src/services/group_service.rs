@@ -49,11 +49,11 @@ impl GroupService {
         // Ensure user exists
         let user = self.user_repo.find_or_create_by_wallet(admin_wallet).await?;
 
-        // Generate pubkey if missing (mock/dev mode fallback)
-        // Generate pubkey if missing (mock/dev mode fallback)
+        // Generate pubkey on-chain if missing or empty
+        // Treat empty string as "not provided" to trigger on-chain creation
         let group_pubkey = match solana_pubkey {
-            Some(pk) => pk.to_string(),
-            None => {
+            Some(pk) if !pk.is_empty() => pk.to_string(),
+            _ => {
                 // Determine if we should create on-chain
                 if self.solana_client.has_keypair() {
                     info!("Attempting to create group on-chain...");
@@ -65,7 +65,6 @@ impl GroupService {
                         Err(e) => {
                             warn!("Failed to create group on-chain: {}. Falling back to off-chain keypair.", e);
                             // Fallback (for offline dev or errors)
-                            // Ideally we should fail here if strict consistency is needed
                             Keypair::new().pubkey().to_string()
                         }
                     }
